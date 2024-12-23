@@ -45,6 +45,23 @@ contract LightClient is BitcoinHeaderParser {
     event BlockHeaderSubmitted(bytes32 indexed blockHash, bytes32 indexed prevBlock, uint256 height);
     event ChainReorg(bytes32 indexed oldTip, bytes32 indexed newTip);
 
+    constructor() {
+        _initialiseGenesisBlock();
+    }
+
+    function _initialiseGenesisBlock() private {
+        BlockHeader memory blockHeader = BlockHeader({
+            version: 0x01,
+            prevBlock: 0x0000000000000000000000000000000000000000000000000000000000000000, // Genesis block has no previous block
+            merkleRoot: 0x4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b, // From image
+            timestamp: 1231006505, // 2009-01-03 23:45:05 GMT +5.5 converted to Unix timestamp
+            difficultyBits: 0x1d00ffff,
+            nonce: 0x7c2bac1d,
+            height: 0
+        });
+        headers[genesisBlock] = blockHeader;
+    }
+
     /**
      * @notice Submit a new block header
      * @param rawHeader The 80-byte Bitcoin block header
@@ -52,7 +69,7 @@ contract LightClient is BitcoinHeaderParser {
     function submitRawBlockHeader(bytes calldata rawHeader) external {
         require(rawHeader.length == HEADER_LENGTH, INVALID_HEADER_LENGTH());
 
-        // Calculate block hash (natural byte order) [TODO: Check if this is correct]
+        // Calculate block hash in reverse byte order
         bytes32 blockHash = getReversedBitcoinBlockHash(rawHeader);
 
         // Parse header
@@ -63,7 +80,7 @@ contract LightClient is BitcoinHeaderParser {
     }
 
     function submitBlockHeader(
-        bytes32 blockHash, // Block hash
+        bytes32 blockHash, // Block hash in reverse byte order
         uint256 version, // Block version
         bytes32 prevBlock, // Previous block hash
         bytes32 merkleRoot, // Merkle tree root hash
@@ -140,7 +157,7 @@ contract LightClient is BitcoinHeaderParser {
     function expandDifficultyBits(uint256 bits) internal pure returns (uint256) {
         // Extract exponent and coefficient
         uint256 exp = bits >> 24;
-        uint256 coef = bits & 0xffffff;
+        uint256 coef = bits & 0x00ffffff;
 
         // Return expanded difficulty target
         return coef * (2 ** (8 * (exp - 3)));
