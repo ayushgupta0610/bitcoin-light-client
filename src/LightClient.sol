@@ -14,7 +14,6 @@ contract LightClient is BitcoinHeaderParser {
     error PREVIOUS_BLOCK_UNKNOWN();
     error INVALID_PROOF_OF_WORK();
     error INVALID_BLOCK_HEADER();
-    error INVALID_BLOCK_HASH();
     error SHA256_FAILED();
     error INVALID_INPUT();
 
@@ -50,15 +49,42 @@ contract LightClient is BitcoinHeaderParser {
      * @notice Submit a new block header
      * @param rawHeader The 80-byte Bitcoin block header
      */
-    function submitBlockHeader(bytes calldata rawHeader) external {
-        // require(getBlockHash(rawHeader) == parsedHeader.blockHash, INVALID_BLOCK_HASH());
+    function submitRawBlockHeader(bytes calldata rawHeader) external {
+        require(rawHeader.length == HEADER_LENGTH, INVALID_HEADER_LENGTH());
+
+        // Calculate block hash (natural byte order) [TODO: Check if this is correct]
+        bytes32 blockHash = getReversedBitcoinBlockHash(rawHeader);
 
         // Parse header
         BlockHeader memory parsedHeader = parseBlockHeader(rawHeader);
 
-        // Calculate block hash (natural byte order)
-        bytes32 blockHash = getReversedBitcoinBlockHash(rawHeader);
+        // Submit block header
+        _submitBlockHeader(blockHash, parsedHeader);
+    }
 
+    function submitBlockHeader(
+        bytes32 blockHash, // Block hash
+        uint256 version, // Block version
+        bytes32 prevBlock, // Previous block hash
+        bytes32 merkleRoot, // Merkle tree root hash
+        uint256 blockTimestamp, // Block timestamp
+        uint256 difficultyBits, // Compressed difficulty target
+        uint256 nonce
+    ) external {
+        BlockHeader memory blockHeader = BlockHeader({
+            version: version, // Block version
+            prevBlock: prevBlock, // Previous block hash
+            merkleRoot: merkleRoot, // Merkle tree root hash
+            timestamp: blockTimestamp, // Block timestamp
+            difficultyBits: difficultyBits, // Compressed difficulty target
+            nonce: nonce, // Nonce used for mining
+            height: 0
+        });
+        _submitBlockHeader(blockHash, blockHeader);
+    }
+
+    // This can also be made as verify and submit Block header by verifying if the parsedHeader hashes to blockHash by converting the struct to rawHeader first
+    function _submitBlockHeader(bytes32 blockHash, BlockHeader memory parsedHeader) private {
         // Verify the header connects to our chain
         require(
             headers[parsedHeader.prevBlock].timestamp != 0 || parsedHeader.prevBlock == genesisBlock,
