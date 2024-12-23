@@ -51,7 +51,7 @@ contract LightClient is BitcoinHeaderParser {
      * @param rawHeader The 80-byte Bitcoin block header
      */
     function submitBlockHeader(bytes calldata rawHeader) external {
-        // require(sha256DoubleHash(blockHeader) == parsedHeader.blockHash, INVALID_BLOCK_HASH());
+        // require(getBlockHash(rawHeader) == parsedHeader.blockHash, INVALID_BLOCK_HASH());
 
         // Parse header
         BlockHeader memory parsedHeader = parseBlockHeader(rawHeader);
@@ -198,9 +198,9 @@ contract LightClient is BitcoinHeaderParser {
         require(expandDifficultyBits(header.difficultyBits) == newTarget, "Invalid difficulty target");
     }
 
-    function sha256DoubleHash(bytes memory blockHeader) internal view returns (bytes32) {
+    function sha256DoubleHash(bytes memory bytesData) internal view returns (bytes32) {
         // First SHA256
-        (bool success1, bytes memory result1) = address(0x2).staticcall(abi.encodePacked(blockHeader));
+        (bool success1, bytes memory result1) = address(0x2).staticcall(abi.encodePacked(bytesData));
         require(success1, SHA256_FAILED());
 
         // Second SHA256
@@ -261,8 +261,8 @@ contract LightClient is BitcoinHeaderParser {
         return headers[blockHash];
     }
 
-    function getBlockHash(bytes calldata blockHeader) external view returns (bytes32) {
-        // require(blockHeader.length == HEADER_LENGTH, INVALID_HEADER_LENGTH());
+    function getBlockHash(bytes calldata blockHeader) public view returns (bytes32) {
+        require(blockHeader.length == HEADER_LENGTH, INVALID_HEADER_LENGTH());
         return sha256DoubleHash(blockHeader);
     }
 }
