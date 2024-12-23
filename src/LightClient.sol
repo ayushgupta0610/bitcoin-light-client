@@ -2,20 +2,25 @@
 pragma solidity ^0.8.19;
 
 import {BitcoinHeaderParser} from "./BitcoinHeaderParser.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
 /**
  * @title BitcoinLightClient
  * @notice A light client implementation for Bitcoin on Ethereum
  * @dev Validates Bitcoin block headers and performs SPV verification
  */
-contract LightClient is BitcoinHeaderParser {
+contract LightClient is BitcoinHeaderParser, AccessControl {
     // Errors
     error INVALID_HEADER_LENGTH();
     error PREVIOUS_BLOCK_UNKNOWN();
     error INVALID_PROOF_OF_WORK();
     error INVALID_BLOCK_HEADER();
+    error INVALID_DIFFICULTY_TARGET();
     error SHA256_FAILED();
     error INVALID_INPUT();
+
+    // Block submitter role
+    bytes32 private constant BLOCK_SUBMIT_ROLE = keccak256("BLOCK_SUBMIT_ROLE");
 
     // Bitcoin block header is 80 bytes
     uint256 private constant HEADER_LENGTH = 80;
@@ -24,7 +29,7 @@ contract LightClient is BitcoinHeaderParser {
     uint256 private constant LOWEST_DIFFICULTY = 0x1d00ffff;
 
     // Maximum difficulty target
-    uint256 private constant MAXIMUM_DIFFICULTY = 0x00000000ffff0000000000000000000000000000000000000000000000000000;
+    // uint256 private constant MAXIMUM_DIFFICULTY = 0x00000000ffff0000000000000000000000000000000000000000000000000000;
 
     // Block header interval for difficulty adjustment
     uint256 private constant DIFFICULTY_ADJUSTMENT_INTERVAL = 2016;
@@ -32,41 +37,43 @@ contract LightClient is BitcoinHeaderParser {
     // Target block time in seconds
     uint256 private constant TARGET_TIMESPAN = 14 * 24 * 60 * 60; // 2 weeks
 
+    // Genesis block header hash
+    bytes32 public constant GENESIS_BLOCK = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f;
+
     // Mapping of block hash to block header
     mapping(bytes32 => BlockHeader) private headers;
 
     // Main chain tip
     bytes32 public chainTip = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f;
 
-    // Genesis block header hash
-    bytes32 public constant genesisBlock = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f;
-
     // Events
     event BlockHeaderSubmitted(bytes32 indexed blockHash, bytes32 indexed prevBlock, uint256 height);
     event ChainReorg(bytes32 indexed oldTip, bytes32 indexed newTip);
 
-    constructor() {
+    constructor(address blockSubmitter) {
+        // TODO: Add functions who can update / delete / add the roles (this is for illustration purposes)
+        _grantRole(BLOCK_SUBMIT_ROLE, blockSubmitter);
         _initialiseGenesisBlock();
     }
 
     function _initialiseGenesisBlock() private {
         BlockHeader memory blockHeader = BlockHeader({
             version: 0x01,
-            prevBlock: 0x0000000000000000000000000000000000000000000000000000000000000000, // Genesis block has no previous block
-            merkleRoot: 0x4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b, // From image
-            timestamp: 1231006505, // 2009-01-03 23:45:05 GMT +5.5 converted to Unix timestamp
+            prevBlock: 0x0000000000000000000000000000000000000000000000000000000000000000,
+            merkleRoot: 0x4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b,
+            timestamp: 1231006505,
             difficultyBits: 0x1d00ffff,
             nonce: 0x7c2bac1d,
             height: 0
         });
-        headers[genesisBlock] = blockHeader;
+        headers[GENESIS_BLOCK] = blockHeader;
     }
 
     /**
      * @notice Submit a new block header
      * @param rawHeader The 80-byte Bitcoin block header
      */
-    function submitRawBlockHeader(bytes calldata rawHeader) external {
+    function submitRawBlockHeader(bytes calldata rawHeader) external onlyRole(BLOCK_SUBMIT_ROLE) {
         require(rawHeader.length == HEADER_LENGTH, INVALID_HEADER_LENGTH());
 
         // Calculate block hash in reverse byte order
@@ -79,21 +86,31 @@ contract LightClient is BitcoinHeaderParser {
         _submitBlockHeader(blockHash, parsedHeader);
     }
 
+    /**
+     * @notice Submit a new block header
+     * @param blockHash Block hash in reverse byte order
+     * @param version Block version
+     * @param prevBlock Previous block hash
+     * @param merkleRoot Merkle tree root hash
+     * @param blockTimestamp  Block timestamp
+     * @param difficultyBits Compressed difficulty target
+     * @param nonce used for mining
+     */
     function submitBlockHeader(
-        bytes32 blockHash, // Block hash in reverse byte order
-        uint256 version, // Block version
-        bytes32 prevBlock, // Previous block hash
-        bytes32 merkleRoot, // Merkle tree root hash
-        uint256 blockTimestamp, // Block timestamp
-        uint256 difficultyBits, // Compressed difficulty target
+        bytes32 blockHash,
+        uint256 version,
+        bytes32 prevBlock,
+        bytes32 merkleRoot,
+        uint256 blockTimestamp,
+        uint256 difficultyBits,
         uint256 nonce
-    ) external {
+    ) external onlyRole(BLOCK_SUBMIT_ROLE) {
         BlockHeader memory blockHeader = BlockHeader({
             version: version, // Block version
-            prevBlock: prevBlock, // Previous block hash
-            merkleRoot: merkleRoot, // Merkle tree root hash
-            timestamp: blockTimestamp, // Block timestamp
-            difficultyBits: difficultyBits, // Compressed difficulty target
+            prevBlock: prevBlock,
+            merkleRoot: merkleRoot,
+            timestamp: blockTimestamp,
+            difficultyBits: difficultyBits,
             nonce: nonce, // Nonce used for mining
             height: 0
         });
@@ -104,20 +121,20 @@ contract LightClient is BitcoinHeaderParser {
     function _submitBlockHeader(bytes32 blockHash, BlockHeader memory parsedHeader) private {
         // Verify the header connects to our chain
         require(
-            headers[parsedHeader.prevBlock].timestamp != 0 || parsedHeader.prevBlock == genesisBlock,
+            headers[parsedHeader.prevBlock].timestamp != 0 || parsedHeader.prevBlock == GENESIS_BLOCK,
             PREVIOUS_BLOCK_UNKNOWN()
         );
 
         // Verify proof of work
         require(verifyProofOfWork(blockHash, parsedHeader.difficultyBits), INVALID_PROOF_OF_WORK());
 
+        // Set block height
+        parsedHeader.height = headers[parsedHeader.prevBlock].height + 1;
+
         // Verify difficulty target if this is an adjustment block
         if (parsedHeader.height % DIFFICULTY_ADJUSTMENT_INTERVAL == 0) {
             verifyDifficultyTarget(parsedHeader);
         }
-
-        // Set block height
-        parsedHeader.height = headers[parsedHeader.prevBlock].height + 1;
 
         // Store the header
         headers[blockHash] = parsedHeader;
@@ -220,7 +237,7 @@ contract LightClient is BitcoinHeaderParser {
             cursor = headers[cursor].prevBlock;
         }
 
-        BlockHeader storage lastAdjustment = headers[cursor];
+        BlockHeader memory lastAdjustment = headers[cursor];
 
         // Calculate actual timespan
         uint256 actualTimespan = header.timestamp - lastAdjustment.timestamp;
@@ -231,14 +248,14 @@ contract LightClient is BitcoinHeaderParser {
 
         // Calculate new target
         uint256 newTarget = expandDifficultyBits(lastAdjustment.difficultyBits);
-        newTarget = newTarget * actualTimespan / TARGET_TIMESPAN;
+        newTarget = (newTarget / TARGET_TIMESPAN) * actualTimespan;
 
         // Ensure new target is below maximum allowed
         uint256 maxTarget = expandDifficultyBits(LOWEST_DIFFICULTY);
         newTarget = newTarget > maxTarget ? maxTarget : newTarget;
 
         // Verify header difficulty matches calculated target
-        require(expandDifficultyBits(header.difficultyBits) == newTarget, "Invalid difficulty target");
+        require(expandDifficultyBits(header.difficultyBits) == newTarget, INVALID_DIFFICULTY_TARGET());
     }
 
     function sha256DoubleHash(bytes memory bytesData) internal view returns (bytes32) {
