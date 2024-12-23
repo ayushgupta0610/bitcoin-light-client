@@ -109,80 +109,53 @@ contract BitcoinLightClient {
         emit BlockHeaderSubmitted(blockHash, parsedHeader.prevBlock, parsedHeader.height);
     }
 
-    // TODO: Correct this
-    /**
-     * @notice Verify a transaction inclusion proofs
-     * @param txId Transaction ID
-     * @param proofs Merkle proofs of inclusion
-     * @param root Block hash containing the transaction
-     * @return bool True if the proofs are valid
-     */
-    function verifyTx(bytes32 txId, bytes32[] calldata proofs, bytes32 root) public view returns (bool) {
-        BlockHeader storage header = headers[root];
-        require(header.timestamp != 0, INVALID_BLOCK_HEADER());
-
-        for (uint256 i = 0; i < proofs.length; i++) {
-            bytes32 proofElement = proofs[i];
-
-            if (txId <= proofElement) {
-                // Hash(current computed hash + current element of the proofs)
-                txId = keccak256(abi.encodePacked(txId, proofElement));
-            } else {
-                // Hash(current element of the proofs + current computed hash)
-                txId = keccak256(abi.encodePacked(proofElement, txId));
-            }
-        }
-
-        return txId == root;
-    }
-
     /**
      * @dev Parse a raw block header (80 bytes) into structured data
      * @param header Raw block header bytes
      * @return BlockHeader Parsed header struct
      */
-    function parseBlockHeader(bytes calldata header) public pure returns (BlockHeader memory) {
-        require(header.length == HEADER_LENGTH, INVALID_HEADER_LENGTH());
+    // function parseBlockHeader(bytes calldata header) public pure returns (BlockHeader memory) {
+    //     require(header.length == HEADER_LENGTH, INVALID_HEADER_LENGTH());
 
-        BlockHeader memory parsed;
-        uint256 version; // Block version
-        bytes32 prevBlock; // Previous block hash
-        bytes32 merkleRoot; // Merkle tree root hash
-        uint256 blockTimestamp; // Block timestamp
-        uint256 difficultyBits; // Compressed difficulty target
-        uint256 nonce; // Nonce used for mining
+    //     BlockHeader memory parsed;
+    //     uint256 version; // Block version
+    //     bytes32 prevBlock; // Previous block hash
+    //     bytes32 merkleRoot; // Merkle tree root hash
+    //     uint256 blockTimestamp; // Block timestamp
+    //     uint256 difficultyBits; // Compressed difficulty target
+    //     uint256 nonce; // Nonce used for mining
 
-        // Extract header fields
-        assembly {
-            // Version is first 4 bytes
-            version := shr(224, calldataload(header.offset))
+    //     // Extract header fields
+    //     assembly {
+    //         // Version is first 4 bytes
+    //         version := shr(224, calldataload(header.offset))
 
-            // Previous block hash is next 32 bytes
-            prevBlock := calldataload(add(header.offset, 4))
+    //         // Previous block hash is next 32 bytes
+    //         prevBlock := calldataload(add(header.offset, 4))
 
-            // Merkle root is next 32 bytes
-            merkleRoot := calldataload(add(header.offset, 36))
+    //         // Merkle root is next 32 bytes
+    //         merkleRoot := calldataload(add(header.offset, 36))
 
-            // Timestamp is next 4 bytes
-            blockTimestamp := shr(224, calldataload(add(header.offset, 68)))
+    //         // Timestamp is next 4 bytes
+    //         blockTimestamp := shr(224, calldataload(add(header.offset, 68)))
 
-            // Difficulty bits is next 4 bytes
-            difficultyBits := shr(224, calldataload(add(header.offset, 72)))
+    //         // Difficulty bits is next 4 bytes
+    //         difficultyBits := shr(224, calldataload(add(header.offset, 72)))
 
-            // Nonce is last 4 bytes
-            nonce := shr(224, calldataload(add(header.offset, 76)))
-        }
+    //         // Nonce is last 4 bytes
+    //         nonce := shr(224, calldataload(add(header.offset, 76)))
+    //     }
 
-        // Assign the correct values
-        parsed.version = version; // Block version
-        parsed.prevBlock = prevBlock; // Previous block hash
-        parsed.merkleRoot = merkleRoot; // Merkle tree root hash
-        parsed.timestamp = blockTimestamp; // Block timestamp
-        parsed.difficultyBits = difficultyBits; // Compressed difficulty target
-        parsed.nonce = nonce;
+    //     // Assign the correct values
+    //     parsed.version = version; // Block version
+    //     parsed.prevBlock = prevBlock; // Previous block hash
+    //     parsed.merkleRoot = merkleRoot; // Merkle tree root hash
+    //     parsed.timestamp = blockTimestamp; // Block timestamp
+    //     parsed.difficultyBits = difficultyBits; // Compressed difficulty target
+    //     parsed.nonce = nonce;
 
-        return parsed;
-    }
+    //     return parsed;
+    // }
 
     /**
      * @dev Calculate double SHA256 hash of block header
@@ -226,8 +199,8 @@ contract BitcoinLightClient {
 
     // TODO: CORRECT THIS || Should be run off chain ideally (gas intensive to do it for BTC txns)
     /**
-     * @dev Calculate merkle root from transaction and proofs
-     * @param txids Merkle proof nodes
+     * @dev Calculate merkle root from transaction ids in natural byte order
+     * @param txids TXIDs must be in natural byte order
      * @return bytes32 Calculated merkle root
      */
     function calculateMerkleRoot(bytes32[] memory txids) public view returns (bytes32) {

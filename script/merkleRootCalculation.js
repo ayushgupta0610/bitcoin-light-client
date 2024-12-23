@@ -59,7 +59,6 @@ const txids = [
 const reversedTxids = txids.map((txid) =>
   txid.match(/.{2}/g).reverse().join("")
 );
-console.log("reversedTxids: ", reversedTxids);
 
 // Create the merkle root
 const result = merkleRoot(reversedTxids);
