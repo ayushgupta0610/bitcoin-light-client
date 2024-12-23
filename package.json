@@ -1,0 +1,28 @@
+{
+  "name": "bitcoin-light-client",
+  "version": "1.0.0",
+  "description": "**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**",
+  "homepage": "https://github.com/ayushgupta0610/bitcoin-light-client#readme",
+  "bugs": {
+    "url": "https://github.com/ayushgupta0610/bitcoin-light-client/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ayushgupta0610/bitcoin-light-client.git"
+  },
+  "license": "ISC",
+  "author": "Ayush Gupta",
+  "type": "commonjs",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "crypto": "^1.0.1",
+    "crypto-js": "^4.2.0"
+  }
+}
