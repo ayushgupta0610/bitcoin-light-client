@@ -33,7 +33,7 @@ contract LightClient is BitcoinHeaderParser {
     uint256 private constant TARGET_TIMESPAN = 14 * 24 * 60 * 60; // 2 weeks
 
     // Mapping of block hash to block header
-    mapping(bytes32 => BlockHeader) public headers;
+    mapping(bytes32 => BlockHeader) private headers;
 
     // Main chain tip
     bytes32 public chainTip = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f;
@@ -46,14 +46,6 @@ contract LightClient is BitcoinHeaderParser {
     event ChainReorg(bytes32 indexed oldTip, bytes32 indexed newTip);
 
     /**
-     * @dev Constructor sets the genesis block
-     * @param _genesisBlock Hash of the Bitcoin genesis block header
-     */
-    constructor(bytes32 _genesisBlock) {
-        chainTip = _genesisBlock;
-    }
-
-    /**
      * @notice Submit a new block header
      * @param rawHeader The 80-byte Bitcoin block header
      */
@@ -64,7 +56,7 @@ contract LightClient is BitcoinHeaderParser {
         BlockHeader memory parsedHeader = parseBlockHeader(rawHeader);
 
         // Calculate block hash (natural byte order)
-        bytes32 blockHash = calculateBlockHash(rawHeader);
+        bytes32 blockHash = getReversedBitcoinBlockHash(rawHeader);
 
         // Verify the header connects to our chain
         require(
@@ -104,7 +96,7 @@ contract LightClient is BitcoinHeaderParser {
      * @param root Block hash containing the transaction
      * @return bool True if the proofs are valid
      */
-    function verifyTx(bytes32 txId, bytes32[] calldata proofs, bytes32 root) public view returns (bool) {
+    function verifyTx(bytes32 txId, bytes32[] calldata proofs, bytes32 root) external view returns (bool) {
         BlockHeader storage header = headers[root];
         require(header.timestamp != 0, INVALID_BLOCK_HEADER());
 
@@ -121,15 +113,6 @@ contract LightClient is BitcoinHeaderParser {
         }
 
         return txId == root;
-    }
-
-    /**
-     * @dev Calculate double SHA256 hash of block header
-     * @param header Raw block header bytes
-     * @return bytes32 Block hash
-     */
-    function calculateBlockHash(bytes calldata header) internal view returns (bytes32) {
-        return sha256DoubleHash(header);
     }
 
     /**
@@ -192,7 +175,7 @@ contract LightClient is BitcoinHeaderParser {
         return calculateMerkleRoot(nextLevel);
     }
 
-    function hashPair(bytes32 a, bytes32 b) public view returns (bytes32) {
+    function hashPair(bytes32 a, bytes32 b) internal view returns (bytes32) {
         return sha256DoubleHash(abi.encodePacked(a, b));
     }
 
@@ -267,7 +250,12 @@ contract LightClient is BitcoinHeaderParser {
         return result;
     }
 
-    function getReversedBitcoinBlockHash(bytes memory blockHeader) public view returns (bytes32) {
+    /**
+     * @dev Calculate bitcoin block hash in reverse order
+     * @param blockHeader Raw block header bytes
+     * @return bytes32 Block hash
+     */
+    function getReversedBitcoinBlockHash(bytes memory blockHeader) internal view returns (bytes32) {
         // First get the double SHA256 hash
         bytes32 hash = sha256DoubleHash(blockHeader);
 
@@ -281,5 +269,9 @@ contract LightClient is BitcoinHeaderParser {
 
         // Then reverse it
         return reverseBytesHash(hash);
+    }
+
+    function getBlockHeader(bytes32 blockHash) external view returns (BlockHeader memory) {
+        return headers[blockHash];
     }
 }

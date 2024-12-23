@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+// Convert this to lib
 contract BitcoinHeaderParser {
     struct BlockHeader {
         uint256 version; // Block version
@@ -64,7 +65,7 @@ contract BitcoinHeaderParser {
     /// @notice Decode a hex string into bytes
     /// @param hexStr The hex string (without 0x prefix)
     /// @return The decoded bytes
-    function hexToBytes(string memory hexStr) public pure returns (bytes memory) {
+    function hexToBytes(string memory hexStr) internal pure returns (bytes memory) {
         bytes memory hexBytes = bytes(hexStr);
         require(hexBytes.length % 2 == 0, "Invalid hex string length");
 
