@@ -83,6 +83,8 @@ console.log(result.match(/.{2}/g).reverse().join(""));
   "0xc46e239ab7d28e2c019b6d66ad8fae98a56ef1f21aeecb94d1b1718186f05963",
   "0x1d0cb83721529a062d9675b98d6e5c587e4a770fc84ed00abc5a5de04568a6e9",
 ];
+// 0x6657a9252aacd5c0b2940996ecff952228c3067cc38d4885efb5a4ac4247e9f3 (Natural byte order)
+// 0xf3e94742aca4b5ef85488dc37c06c3282295ffec960994b2c0d5ac2a25a95766 (Reverse byte order)
 
 // Reverse byte order
 [

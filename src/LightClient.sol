@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
+import {console} from "forge-std/console.sol";
 import {BitcoinHeaderParser} from "./BitcoinHeaderParser.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
@@ -18,6 +19,7 @@ contract LightClient is BitcoinHeaderParser, AccessControl {
     error INVALID_DIFFICULTY_TARGET();
     error SHA256_FAILED();
     error INVALID_INPUT();
+    error EXPONENT_TOO_LARGE();
 
     // Block submitter role
     bytes32 private constant BLOCK_SUBMIT_ROLE = keccak256("BLOCK_SUBMIT_ROLE");
@@ -25,8 +27,8 @@ contract LightClient is BitcoinHeaderParser, AccessControl {
     // Bitcoin block header is 80 bytes
     uint256 private constant HEADER_LENGTH = 80;
 
-    // Minimum difficulty target
-    uint256 private constant LOWEST_DIFFICULTY_BITS = 0x1d00ffff;
+    // Minimum difficulty bits
+    uint256 private constant MINIMUM_DIFFICULTY_BITS = 0x1d00ffff;
 
     // Block header interval for difficulty adjustment
     uint256 private constant DIFFICULTY_ADJUSTMENT_INTERVAL = 2016;
@@ -40,12 +42,17 @@ contract LightClient is BitcoinHeaderParser, AccessControl {
     // Mapping of block hash to block header
     mapping(bytes32 => BlockHeader) private headers;
 
-    // Main chain tip
-    bytes32 public chainTip = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f;
+    // Last block hash initialised to genesis block
+    bytes32 public latestBlockHash = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f;
 
     // Events
     event BlockHeaderSubmitted(bytes32 indexed blockHash, bytes32 indexed prevBlock, uint256 height);
-    event ChainReorg(bytes32 indexed oldTip, bytes32 indexed newTip);
+    event ChainReorg(
+        uint256 prevBlockHeight,
+        bytes32 indexed prevBlockHash,
+        bytes32 indexed latestBlockHash,
+        uint256 latestBlockHeight
+    );
 
     constructor(address blockSubmitter) {
         // TODO: Add functions who can update / delete / add the roles (this is for illustration purposes)
@@ -136,41 +143,14 @@ contract LightClient is BitcoinHeaderParser, AccessControl {
         // Store the header
         headers[blockHash] = parsedHeader;
 
-        // Update chain tip if this is the new best chain
-        if (parsedHeader.height > headers[chainTip].height) {
-            bytes32 oldTip = chainTip;
-            chainTip = blockHash;
-            emit ChainReorg(oldTip, chainTip);
+        // Update latest block hash if this is the new best chain
+        if (parsedHeader.height > headers[latestBlockHash].height) {
+            bytes32 prevBlockHash = latestBlockHash;
+            latestBlockHash = blockHash;
+            emit ChainReorg(headers[latestBlockHash].height, prevBlockHash, latestBlockHash, parsedHeader.height);
         }
 
         emit BlockHeaderSubmitted(blockHash, parsedHeader.prevBlock, parsedHeader.height);
-    }
-
-    // TODO: Correct this
-    /**
-     * @notice Verify a transaction inclusion proofs
-     * @param txId Transaction ID
-     * @param proofs Merkle proofs of inclusion
-     * @param root Block hash containing the transaction
-     * @return bool True if the proofs are valid
-     */
-    function verifyTx(bytes32 txId, bytes32[] calldata proofs, bytes32 root) external view returns (bool) {
-        BlockHeader storage header = headers[root];
-        require(header.timestamp != 0, INVALID_BLOCK_HEADER());
-
-        for (uint256 i = 0; i < proofs.length; i++) {
-            bytes32 proofElement = proofs[i];
-
-            if (txId <= proofElement) {
-                // Hash(current computed hash + current element of the proofs)
-                txId = keccak256(abi.encodePacked(txId, proofElement));
-            } else {
-                // Hash(current element of the proofs + current computed hash)
-                txId = keccak256(abi.encodePacked(proofElement, txId));
-            }
-        }
-
-        return txId == root;
     }
 
     /**
@@ -199,7 +179,11 @@ contract LightClient is BitcoinHeaderParser, AccessControl {
         uint256 exp = bits >> 24;
         uint256 coef = bits & 0x00ffffff;
 
-        // Return expanded difficulty target
+        // Add safety checks
+        require(exp <= 32, EXPONENT_TOO_LARGE()); // Reasonable limit for Bitcoin
+
+        // Use a safer calculation method
+        if (exp <= 3) return coef >> (8 * (3 - exp));
         return coef * (2 ** (8 * (exp - 3)));
     }
 
@@ -209,7 +193,7 @@ contract LightClient is BitcoinHeaderParser, AccessControl {
      * @return bytes32 Calculated merkle root
      */
     function calculateMerkleRoot(bytes32[] memory txids) public view returns (bytes32) {
-        require(txids.length == 0, INVALID_INPUT());
+        require(txids.length != 0, INVALID_INPUT());
         if (txids.length == 1) return txids[0];
 
         // Create a memory array to store the current level's hashes
@@ -253,7 +237,7 @@ contract LightClient is BitcoinHeaderParser, AccessControl {
      * @dev Verify difficulty target for adjustment blocks
      * @param header New block header
      */
-    function verifyDifficultyTarget(BlockHeader memory header) internal view {
+    function verifyDifficultyTarget(BlockHeader memory header) public view {
         // Get the last adjustment block
         bytes32 cursor = header.prevBlock;
         for (uint256 i = 0; i < DIFFICULTY_ADJUSTMENT_INTERVAL - 1; i++) {
@@ -273,8 +257,8 @@ contract LightClient is BitcoinHeaderParser, AccessControl {
         uint256 newTarget = expandDifficultyBits(lastAdjustment.difficultyBits);
         newTarget = (newTarget * actualTimespan) / TARGET_TIMESPAN;
 
-        // Ensure new target is below maximum allowed
-        uint256 maxTarget = expandDifficultyBits(LOWEST_DIFFICULTY_BITS);
+        // Ensure new target is below max target allowed
+        uint256 maxTarget = expandDifficultyBits(MINIMUM_DIFFICULTY_BITS);
         newTarget = newTarget > maxTarget ? maxTarget : newTarget;
 
         // Verify header difficulty matches calculated target
