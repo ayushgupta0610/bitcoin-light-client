@@ -26,10 +26,7 @@ contract LightClient is BitcoinHeaderParser, AccessControl {
     uint256 private constant HEADER_LENGTH = 80;
 
     // Minimum difficulty target
-    uint256 private constant LOWEST_DIFFICULTY = 0x1d00ffff;
-
-    // Maximum difficulty target
-    // uint256 private constant MAXIMUM_DIFFICULTY = 0x00000000ffff0000000000000000000000000000000000000000000000000000;
+    uint256 private constant LOWEST_DIFFICULTY_BITS = 0x1d00ffff;
 
     // Block header interval for difficulty adjustment
     uint256 private constant DIFFICULTY_ADJUSTMENT_INTERVAL = 2016;
@@ -149,13 +146,40 @@ contract LightClient is BitcoinHeaderParser, AccessControl {
         emit BlockHeaderSubmitted(blockHash, parsedHeader.prevBlock, parsedHeader.height);
     }
 
+    // TODO: Correct this
+    /**
+     * @notice Verify a transaction inclusion proofs
+     * @param txId Transaction ID
+     * @param proofs Merkle proofs of inclusion
+     * @param root Block hash containing the transaction
+     * @return bool True if the proofs are valid
+     */
+    function verifyTx(bytes32 txId, bytes32[] calldata proofs, bytes32 root) external view returns (bool) {
+        BlockHeader storage header = headers[root];
+        require(header.timestamp != 0, INVALID_BLOCK_HEADER());
+
+        for (uint256 i = 0; i < proofs.length; i++) {
+            bytes32 proofElement = proofs[i];
+
+            if (txId <= proofElement) {
+                // Hash(current computed hash + current element of the proofs)
+                txId = keccak256(abi.encodePacked(txId, proofElement));
+            } else {
+                // Hash(current element of the proofs + current computed hash)
+                txId = keccak256(abi.encodePacked(proofElement, txId));
+            }
+        }
+
+        return txId == root;
+    }
+
     /**
      * @dev Verify the proof of work meets difficulty target
      * @param blockHash Calculated block hash
      * @param difficultyBits Compressed difficulty target
      * @return bool True if proof of work is valid
      */
-    function verifyProofOfWork(bytes32 blockHash, uint256 difficultyBits) internal pure returns (bool) {
+    function verifyProofOfWork(bytes32 blockHash, uint256 difficultyBits) public pure returns (bool) {
         // Extract difficulty target from compressed bits
         uint256 target = expandDifficultyBits(difficultyBits);
 
@@ -171,8 +195,7 @@ contract LightClient is BitcoinHeaderParser, AccessControl {
      * @param bits Compressed difficulty target
      * @return uint256 Expanded target
      */
-    function expandDifficultyBits(uint256 bits) internal pure returns (uint256) {
-        // Extract exponent and coefficient
+    function expandDifficultyBits(uint256 bits) public pure returns (uint256) {
         uint256 exp = bits >> 24;
         uint256 coef = bits & 0x00ffffff;
 
@@ -248,10 +271,10 @@ contract LightClient is BitcoinHeaderParser, AccessControl {
 
         // Calculate new target
         uint256 newTarget = expandDifficultyBits(lastAdjustment.difficultyBits);
-        newTarget = (newTarget / TARGET_TIMESPAN) * actualTimespan;
+        newTarget = (newTarget * actualTimespan) / TARGET_TIMESPAN;
 
         // Ensure new target is below maximum allowed
-        uint256 maxTarget = expandDifficultyBits(LOWEST_DIFFICULTY);
+        uint256 maxTarget = expandDifficultyBits(LOWEST_DIFFICULTY_BITS);
         newTarget = newTarget > maxTarget ? maxTarget : newTarget;
 
         // Verify header difficulty matches calculated target
@@ -301,7 +324,7 @@ contract LightClient is BitcoinHeaderParser, AccessControl {
      * @param blockHeader Raw block header bytes
      * @return bytes32 Block hash
      */
-    function getReversedBitcoinBlockHash(bytes memory blockHeader) internal view returns (bytes32) {
+    function getReversedBitcoinBlockHash(bytes memory blockHeader) public view returns (bytes32) {
         // First get the double SHA256 hash
         bytes32 hash = sha256DoubleHash(blockHeader);
 
