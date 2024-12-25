@@ -193,57 +193,57 @@ contract LightClient is AccessControl {
      * @dev Verify difficulty target for adjustment blocks
      * @param header New block header
      */
-    function verifyDifficultyTarget(BitcoinUtils.BlockHeader memory header) public view {
-        // Only adjust difficulty every 2016 blocks
-        if (header.height % 2016 != 0) {
-            require(
-                header.difficultyBits == headers[header.prevBlock].difficultyBits,
-                "Difficulty can only change on adjustment blocks"
-            );
-            return;
-        }
+    // function verifyDifficultyTarget(BitcoinUtils.BlockHeader memory header) public view {
+    //     // Only adjust difficulty every 2016 blocks
+    //     if (header.height % 2016 != 0) {
+    //         require(
+    //             header.difficultyBits == headers[header.prevBlock].difficultyBits,
+    //             "Difficulty can only change on adjustment blocks"
+    //         );
+    //         return;
+    //     }
 
-        // Calculate the height of the last adjustment block
-        // For block 2016, we need block 0
-        // For block 4032, we need block 2016
-        uint256 lastAdjustmentHeight = (header.height / 2016 - 1) * 2016;
+    //     // Calculate the height of the last adjustment block
+    //     // For block 2016, we need block 0
+    //     // For block 4032, we need block 2016
+    //     uint256 lastAdjustmentHeight = (header.height / 2016 - 1) * 2016;
 
-        // Get the last adjustment block by traversing back to that height
-        bytes32 cursor = header.prevBlock;
-        BitcoinUtils.BlockHeader memory currentBlock;
+    //     // Get the last adjustment block by traversing back to that height
+    //     bytes32 cursor = header.prevBlock;
+    //     BitcoinUtils.BlockHeader memory currentBlock;
 
-        do {
-            currentBlock = headers[cursor];
-            cursor = currentBlock.prevBlock;
-        } while (currentBlock.height > lastAdjustmentHeight);
+    //     do {
+    //         currentBlock = headers[cursor];
+    //         cursor = currentBlock.prevBlock;
+    //     } while (currentBlock.height > lastAdjustmentHeight);
 
-        BitcoinUtils.BlockHeader memory lastAdjustment = headers[cursor];
+    //     BitcoinUtils.BlockHeader memory lastAdjustment = headers[cursor];
 
-        // Calculate actual timespan between last adjustment and current block
-        uint256 actualTimespan = header.timestamp - lastAdjustment.timestamp;
+    //     // Calculate actual timespan between last adjustment and current block
+    //     uint256 actualTimespan = header.timestamp - lastAdjustment.timestamp;
 
-        // Bound the adjustment factor
-        if (actualTimespan < TARGET_TIMESPAN / 4) {
-            actualTimespan = TARGET_TIMESPAN / 4;
-        }
-        if (actualTimespan > TARGET_TIMESPAN * 4) {
-            actualTimespan = TARGET_TIMESPAN * 4;
-        }
+    //     // Bound the adjustment factor
+    //     if (actualTimespan < TARGET_TIMESPAN / 4) {
+    //         actualTimespan = TARGET_TIMESPAN / 4;
+    //     }
+    //     if (actualTimespan > TARGET_TIMESPAN * 4) {
+    //         actualTimespan = TARGET_TIMESPAN * 4;
+    //     }
 
-        // Calculate new target
-        uint256 oldTarget = BitcoinUtils.expandDifficultyBits(lastAdjustment.difficultyBits);
-        uint256 newTarget = (oldTarget * actualTimespan) / TARGET_TIMESPAN;
+    //     // Calculate new target
+    //     uint256 oldTarget = BitcoinUtils.expandDifficultyBits(lastAdjustment.difficultyBits);
+    //     uint256 newTarget = (oldTarget * actualTimespan) / TARGET_TIMESPAN;
 
-        // Never exceed the minimum difficulty (maximum target)
-        uint256 maxTarget = BitcoinUtils.expandDifficultyBits(MINIMUM_DIFFICULTY_BITS);
-        if (newTarget > maxTarget) {
-            newTarget = maxTarget;
-        }
+    //     // Never exceed the minimum difficulty (maximum target)
+    //     uint256 maxTarget = BitcoinUtils.expandDifficultyBits(MINIMUM_DIFFICULTY_BITS);
+    //     if (newTarget > maxTarget) {
+    //         newTarget = maxTarget;
+    //     }
 
-        // Convert new target to compact format and verify
-        uint32 newDifficultyBits = BitcoinUtils.compactDifficultyBits(uint32(newTarget));
-        require(header.difficultyBits == newDifficultyBits, "Invalid difficulty target");
-    }
+    //     // Convert new target to compact format and verify
+    //     uint32 newDifficultyBits = BitcoinUtils.compactDifficultyBits(uint32(newTarget));
+    //     require(header.difficultyBits == newDifficultyBits, "Invalid difficulty target");
+    // }
 
     /**
      * @dev Calculate serialized block header from BlockHeader struct
