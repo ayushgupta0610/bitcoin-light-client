@@ -10,7 +10,7 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
  * @notice A light client implementation for Bitcoin on Ethereum
  * @dev Validates Bitcoin block headers and performs SPV verification
  */
-contract LightClient is BitcoinHeaderParser, AccessControl {
+contract LightClient is AccessControl {
     // Errors
     error INVALID_HEADER_LENGTH();
     error PREVIOUS_BLOCK_UNKNOWN();
@@ -40,7 +40,7 @@ contract LightClient is BitcoinHeaderParser, AccessControl {
     bytes32 public constant GENESIS_BLOCK = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f;
 
     // Mapping of block hash to block header
-    mapping(bytes32 => BlockHeader) private headers;
+    mapping(bytes32 => BitcoinHeaderParser.BlockHeader) private headers;
 
     // Last block hash initialised to genesis block
     bytes32 public latestBlockHash = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f;
@@ -61,7 +61,7 @@ contract LightClient is BitcoinHeaderParser, AccessControl {
     }
 
     function _initialiseGenesisBlock() private {
-        BlockHeader memory blockHeader = BlockHeader({
+        BitcoinHeaderParser.BlockHeader memory blockHeader = BitcoinHeaderParser.BlockHeader({
             version: 0x01,
             prevBlock: 0x0000000000000000000000000000000000000000000000000000000000000000,
             merkleRoot: 0x4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b,
@@ -84,7 +84,7 @@ contract LightClient is BitcoinHeaderParser, AccessControl {
         bytes32 blockHash = getReversedBitcoinBlockHash(rawHeader);
 
         // Parse header
-        BlockHeader memory parsedHeader = parseBlockHeader(rawHeader);
+        BitcoinHeaderParser.BlockHeader memory parsedHeader = BitcoinHeaderParser.parseBlockHeader(rawHeader);
 
         // Submit block header
         _submitBlockHeader(blockHash, parsedHeader);
@@ -94,22 +94,22 @@ contract LightClient is BitcoinHeaderParser, AccessControl {
      * @notice Submit a new block header
      * @param blockHash Block hash in reverse byte order
      * @param version Block version
-     * @param prevBlock Previous block hash
-     * @param merkleRoot Merkle tree root hash
      * @param blockTimestamp  Block timestamp
      * @param difficultyBits Compressed difficulty target
      * @param nonce used for mining
+     * @param prevBlock Previous block hash
+     * @param merkleRoot Merkle tree root hash
      */
     function submitBlockHeader(
         bytes32 blockHash,
-        uint256 version,
-        bytes32 prevBlock,
-        bytes32 merkleRoot,
-        uint256 blockTimestamp,
-        uint256 difficultyBits,
-        uint256 nonce
+        uint32 version, // 4 bytes
+        uint40 blockTimestamp, // 5 bytes
+        uint32 difficultyBits, // 4 bytes
+        uint32 nonce, // 4 bytes
+        bytes32 prevBlock, // 32 bytes
+        bytes32 merkleRoot // 32 bytes
     ) external onlyRole(BLOCK_SUBMIT_ROLE) {
-        BlockHeader memory blockHeader = BlockHeader({
+        BitcoinHeaderParser.BlockHeader memory blockHeader = BitcoinHeaderParser.BlockHeader({
             version: version, // Block version
             prevBlock: prevBlock,
             merkleRoot: merkleRoot,
@@ -122,7 +122,7 @@ contract LightClient is BitcoinHeaderParser, AccessControl {
     }
 
     // This can also be made as verify and submit Block header by verifying if the parsedHeader hashes to blockHash by converting the struct to rawHeader first
-    function _submitBlockHeader(bytes32 blockHash, BlockHeader memory parsedHeader) private {
+    function _submitBlockHeader(bytes32 blockHash, BitcoinHeaderParser.BlockHeader memory parsedHeader) private {
         // Verify the header connects to our chain
         require(
             headers[parsedHeader.prevBlock].timestamp != 0 || parsedHeader.prevBlock == GENESIS_BLOCK,
@@ -237,14 +237,14 @@ contract LightClient is BitcoinHeaderParser, AccessControl {
      * @dev Verify difficulty target for adjustment blocks
      * @param header New block header
      */
-    function verifyDifficultyTarget(BlockHeader memory header) public view {
+    function verifyDifficultyTarget(BitcoinHeaderParser.BlockHeader memory header) public view {
         // Get the last adjustment block
         bytes32 cursor = header.prevBlock;
         for (uint256 i = 0; i < DIFFICULTY_ADJUSTMENT_INTERVAL - 1; i++) {
             cursor = headers[cursor].prevBlock;
         }
 
-        BlockHeader memory lastAdjustment = headers[cursor];
+        BitcoinHeaderParser.BlockHeader memory lastAdjustment = headers[cursor];
 
         // Calculate actual timespan
         uint256 actualTimespan = header.timestamp - lastAdjustment.timestamp;
@@ -324,7 +324,7 @@ contract LightClient is BitcoinHeaderParser, AccessControl {
         return reverseBytes32(hash);
     }
 
-    function getBlockHeader(bytes32 blockHash) external view returns (BlockHeader memory) {
+    function getBlockHeader(bytes32 blockHash) external view returns (BitcoinHeaderParser.BlockHeader memory) {
         return headers[blockHash];
     }
 

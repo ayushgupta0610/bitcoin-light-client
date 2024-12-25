@@ -1,26 +1,25 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-// Convert this to lib
-contract BitcoinHeaderParser {
+library BitcoinHeaderParser {
     struct BlockHeader {
-        uint256 version; // Block version
-        bytes32 prevBlock; // Previous block hash
-        bytes32 merkleRoot; // Merkle tree root hash
-        uint256 timestamp; // Block timestamp
-        uint256 difficultyBits; // Compressed difficulty target
-        uint256 nonce; // Nonce used for mining
-        uint256 height; // Block height
+        uint32 version; // 4 bytes
+        uint40 timestamp; // 5 bytes
+        uint32 difficultyBits; // 4 bytes
+        uint32 nonce; // 4 bytes
+        uint32 height; // 4 bytes
+        bytes32 prevBlock; // 32 bytes
+        bytes32 merkleRoot; // 32 bytes
     }
 
     /// @notice Parses raw Bitcoin block header bytes into a structured format
     /// @param rawHeader The 80-byte Bitcoin block header
     /// @return header The parsed BlockHeader struct
-    function parseBlockHeader(bytes calldata rawHeader) public pure returns (BlockHeader memory header) {
+    function parseBlockHeader(bytes calldata rawHeader) internal pure returns (BlockHeader memory header) {
         require(rawHeader.length == 80, "Invalid header length");
 
         // Version (4 bytes) - Convert from LE to BE
-        header.version = bytesToUint256(reverseBytes(rawHeader[0:4]));
+        header.version = uint32(bytesToUint256(reverseBytes(rawHeader[0:4])));
 
         // Previous block hash (32 bytes) - Reverse byte order
         header.prevBlock = bytes32(reverseBytes(rawHeader[4:36]));
@@ -28,14 +27,14 @@ contract BitcoinHeaderParser {
         // Merkle root (32 bytes) - Reverse byte order
         header.merkleRoot = bytes32(reverseBytes(rawHeader[36:68]));
 
-        // Timestamp (4 bytes) - Convert from LE to BE
-        header.timestamp = bytesToUint256(reverseBytes(rawHeader[68:72]));
+        // Timestamp (4 bytes) - Convert from LE to BE and cast to uint40
+        header.timestamp = uint40(bytesToUint256(reverseBytes(rawHeader[68:72])));
 
-        // Difficulty bits (4 bytes) - Convert from LE to BE
-        header.difficultyBits = bytesToUint256(reverseBytes(rawHeader[72:76]));
+        // Difficulty bits (4 bytes) - Convert from LE to BE and cast to uint32
+        header.difficultyBits = uint32(bytesToUint256(reverseBytes(rawHeader[72:76])));
 
-        // Nonce (4 bytes) - Convert from LE to BE
-        header.nonce = bytesToUint256(reverseBytes(rawHeader[76:80]));
+        // Nonce (4 bytes) - Convert from LE to BE and cast to uint32
+        header.nonce = uint32(bytesToUint256(reverseBytes(rawHeader[76:80])));
     }
 
     /// @notice Converts bytes to uint256

@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 import {Test, console} from "forge-std/Test.sol";
 import {LightClient} from "../src/LightClient.sol";
+import {BitcoinHeaderParser} from "../src/BitcoinHeaderParser.sol";
 
 contract LightClientTest is Test {
     LightClient public lightClient;
@@ -43,7 +44,7 @@ contract LightClientTest is Test {
         vm.startPrank(blockSubmitter);
         lightClient.submitRawBlockHeader(VALID_BLOCK_HEADER);
 
-        LightClient.BlockHeader memory header = lightClient.getBlockHeader(VALID_BLOCK_HASH);
+        BitcoinHeaderParser.BlockHeader memory header = lightClient.getBlockHeader(VALID_BLOCK_HASH);
         assertEq(header.version, 1);
         assertEq(header.prevBlock, 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f);
         assertEq(header.merkleRoot, 0x0e3e2357e806b6cdb1f70b54c3a3a17b6714ee1f0e68bebb44a74b1efd512098);
@@ -97,4 +98,91 @@ contract LightClientTest is Test {
         bytes32 PRECALCULATED_MERKLE_ROOT = 0x6657a9252aacd5c0b2940996ecff952228c3067cc38d4885efb5a4ac4247e9f3; // (Natural byte order)
         assertTrue(root == PRECALCULATED_MERKLE_ROOT);
     }
+
+    // function testDifficultyAdjustment() public {
+    //     // Create a chain of 2016 blocks to test difficulty adjustment
+    //     vm.startPrank(blockSubmitter);
+
+    //     bytes memory header = VALID_BLOCK_HEADER;
+    //     for (uint256 i = 0; i < 2016; i++) {
+    //         // Modify header timestamp and nonce for each block
+    //         header = _modifyBlockHeader(header, i);
+    //         lightClient.submitRawBlockHeader(header);
+    //     }
+
+    //     vm.stopPrank();
+    // }
+
+    // function _modifyBlockHeader(bytes memory header, uint256 index) internal pure returns (bytes memory) {
+    //     bytes memory modified = new bytes(80);
+    //     for (uint256 i = 0; i < 80; i++) {
+    //         if (i >= 68 && i < 72) {
+    //             // Timestamp bytes
+    //             modified[i] = bytes1(uint8(header[i]) + uint8(index & 0xFF));
+    //         } else if (i >= 76 && i < 80) {
+    //             // Nonce bytes
+    //             modified[i] = bytes1(uint8(header[i]) + uint8(index & 0xFF));
+    //         } else {
+    //             modified[i] = header[i];
+    //         }
+    //     }
+    //     return modified;
+    // }
+
+    // Fuzz testing for bits and verifyDifficultyTarget
+    // function testFuzz_SubmitBlockHeader(
+    //     uint256 version,
+    //     bytes32 prevBlock,
+    //     bytes32 merkleRoot,
+    //     uint256 timestamp,
+    //     uint256 difficultyBits,
+    //     uint256 nonce
+    // ) public {
+    //     // Ensure prevBlock matches the latest block hash
+    //     vm.assume(prevBlock == lightClient.latestBlockHash());
+
+    //     // Version: Bitcoin uses 4 bytes for version (current valid versions are 1-4)
+    //     vm.assume(version <= 4 && version > 0);
+
+    //     // Timestamp: Must be greater than median of last 11 blocks
+    //     // and cannot be more than 2 hours in the future from current block time
+    //     // vm.assume(timestamp <= block.timestamp + 2 hours);
+    //     // vm.assume(timestamp >= block.timestamp - 1 days); // reasonable past limit
+
+    //     // DifficultyBits: Must be 4 bytes (uint32) and within Bitcoin's difficulty range
+    //     // Bitcoin's minimum difficulty target (mainnet) is 0x1d00ffff
+    //     // Maximum difficulty (smallest target) currently around 0x1700_0000
+    //     vm.assume(difficultyBits <= 0x1d00ffff);
+    //     // vm.assume(difficultyBits >= 0x17000000);
+
+    //     // Nonce: Must be 4 bytes (uint32)
+    //     vm.assume(nonce <= type(uint32).max);
+
+    //     vm.startPrank(blockSubmitter);
+    //     lightClient.submitBlockHeader(bytes32(0), version, prevBlock, merkleRoot, timestamp, difficultyBits, nonce);
+    //     vm.stopPrank();
+    // }
+
+    // function testFuzzExpandDifficultyBits(uint256 bits) public view {
+    //     // Constrain bits to realistic values
+    //     bits = bound(bits, 0, 0xff << 24 | 0x00ffffff);
+
+    //     try lightClient.expandDifficultyBits(bits) returns (uint256 result) {
+    //         // Verify the result is not zero unless input was zero
+    //         if (bits != 0) {
+    //             assertTrue(result > 0, "Result should be positive for non-zero input");
+    //         }
+
+    //         // Verify the exponent is within reasonable bounds
+    //         uint256 exp = bits >> 24;
+    //         assertTrue(exp <= 32, "Exponent should be reasonable for valid difficulty");
+    //     } catch Error(string memory) {
+    //         // If it reverts, the input should be an edge case
+    //         assertTrue(
+    //             (bits >> 24) > 32 // Exponent too large
+    //                 || (bits & 0x00ffffff) == 0x00ffffff, // Coefficient at max
+    //             "Should only revert for edge cases"
+    //         );
+    //     }
+    // }
 }
