@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {console} from "forge-std/console.sol";
 import {BitcoinUtils} from "./BitcoinUtils.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
@@ -116,22 +117,27 @@ contract LightClient is AccessControl {
 
     // This can also be made as verify and submit Block header by verifying if the blockHeader hashes to blockHash by converting the struct to rawHeader first - Will add to the gas cost!
     function _submitBlockHeader(bytes32 blockHash, BitcoinUtils.BlockHeader memory blockHeader) private {
+        console.log("Entered submitBlockHeader: ", blockHeader.timestamp);
         // Verify the header connects to our chain
         require(
             headers[blockHeader.prevBlock].timestamp != 0 || blockHeader.prevBlock == GENESIS_BLOCK,
             PREVIOUS_BLOCK_UNKNOWN()
         );
+        console.log("Passed PREVIOUS_BLOCK_UNKNOWN: ", headers[blockHeader.prevBlock].timestamp);
 
         // Verify proof of work
         require(BitcoinUtils.verifyProofOfWork(blockHash, blockHeader.difficultyBits), INVALID_PROOF_OF_WORK());
+        console.log("Passed INVALID_PROOF_OF_WORK");
 
         // Set block height
         blockHeader.height = headers[blockHeader.prevBlock].height + 1;
+        console.log("blockHeader.height: ", blockHeader.height);
 
         // Verify difficulty target if this is an adjustment block
         if (blockHeader.height % DIFFICULTY_ADJUSTMENT_INTERVAL == 0) {
             verifyDifficultyTarget(blockHeader);
         }
+        console.log("Passed verifyDifficultyTarget");
 
         // Store the header
         headers[blockHash] = blockHeader;
@@ -193,31 +199,66 @@ contract LightClient is AccessControl {
      * @param header New block header
      */
     function verifyDifficultyTarget(BitcoinUtils.BlockHeader memory header) public view {
+        console.log("=== Starting verifyDifficultyTarget ===");
+        console.log("Input header timestamp:", header.timestamp);
+        console.log("Input header difficultyBits:", header.difficultyBits);
+
         // Get the last adjustment block
         bytes32 cursor = header.prevBlock;
+        console.log("Initial cursor (prevBlock):", uint256(cursor));
+
         for (uint256 i = 0; i < DIFFICULTY_ADJUSTMENT_INTERVAL - 1; i++) {
             cursor = headers[cursor].prevBlock;
+            if (i % 100 == 0) {
+                // Log every 100th iteration to avoid too many logs
+                console.log("Cursor at iteration", i, ":", uint256(cursor));
+            }
         }
 
         BitcoinUtils.BlockHeader memory lastAdjustment = headers[cursor];
+        console.log("Last adjustment block timestamp:", lastAdjustment.timestamp);
+        console.log("Last adjustment difficultyBits:", lastAdjustment.difficultyBits);
 
         // Calculate actual timespan
+        if (header.timestamp < lastAdjustment.timestamp) revert INVALID_DIFFICULTY_TARGET();
         uint256 actualTimespan = header.timestamp - lastAdjustment.timestamp;
+        console.log("Initial actualTimespan:", actualTimespan);
 
-        // Apply bounds of 1/4 and 4x target timespan (3.5 days to 8 weeks)
+        // Apply bounds of 1/4 and 4x target timespan
+        uint256 originalTimespan = actualTimespan;
         actualTimespan = actualTimespan < TARGET_TIMESPAN / 4 ? TARGET_TIMESPAN / 4 : actualTimespan;
         actualTimespan = actualTimespan > TARGET_TIMESPAN * 4 ? TARGET_TIMESPAN * 4 : actualTimespan;
+        console.log("TARGET_TIMESPAN:", TARGET_TIMESPAN);
+        console.log("Bounded actualTimespan:", actualTimespan);
+        if (originalTimespan != actualTimespan) {
+            console.log("Timespan was bounded. Original:", originalTimespan);
+        }
 
         // Calculate new target
         uint256 newTarget = BitcoinUtils.expandDifficultyBits(lastAdjustment.difficultyBits);
+        console.log("Initial newTarget:", newTarget);
+
         newTarget = (newTarget * actualTimespan) / TARGET_TIMESPAN;
+        console.log("Adjusted newTarget:", newTarget);
 
         // Ensure new target is below max target allowed
         uint256 maxTarget = BitcoinUtils.expandDifficultyBits(MINIMUM_DIFFICULTY_BITS);
+        console.log("maxTarget:", maxTarget);
+
+        uint256 preCapTarget = newTarget;
         newTarget = newTarget > maxTarget ? maxTarget : newTarget;
+        if (preCapTarget != newTarget) {
+            console.log("Target was capped. Original:", preCapTarget);
+        }
+        console.log("Final newTarget:", newTarget);
 
         // Verify header difficulty matches calculated target
-        require(BitcoinUtils.expandDifficultyBits(header.difficultyBits) == newTarget, INVALID_DIFFICULTY_TARGET());
+        uint256 headerTarget = BitcoinUtils.expandDifficultyBits(header.difficultyBits);
+        console.log("Header's target:", headerTarget);
+        console.log("Expected target:", newTarget);
+
+        require(headerTarget == newTarget, INVALID_DIFFICULTY_TARGET());
+        console.log("=== Difficulty verification passed ===");
     }
 
     /**
