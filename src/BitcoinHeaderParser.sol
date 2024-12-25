@@ -2,6 +2,10 @@
 pragma solidity ^0.8.0;
 
 library BitcoinHeaderParser {
+    error SHA256_FAILED();
+    error EXPONENT_TOO_LARGE();
+    error INVALID_LENGTH();
+
     struct BlockHeader {
         uint32 version; // 4 bytes
         uint40 timestamp; // 5 bytes
@@ -12,11 +16,26 @@ library BitcoinHeaderParser {
         bytes32 merkleRoot; // 32 bytes
     }
 
+    /// @notice Creates bitcoin sha256 double hash
+    /// @param bytesData bytes data to be double hashed
+    /// @return bytes32 sha256 double hashed
+    function sha256DoubleHash(bytes memory bytesData) internal view returns (bytes32) {
+        // First SHA256
+        (bool success1, bytes memory result1) = address(0x2).staticcall(abi.encodePacked(bytesData));
+        require(success1, SHA256_FAILED());
+
+        // Second SHA256
+        (bool success2, bytes memory result2) = address(0x2).staticcall(result1);
+        require(success2, SHA256_FAILED());
+
+        return bytes32(result2);
+    }
+
     /// @notice Parses raw Bitcoin block header bytes into a structured format
     /// @param rawHeader The 80-byte Bitcoin block header
     /// @return header The parsed BlockHeader struct
     function parseBlockHeader(bytes calldata rawHeader) internal pure returns (BlockHeader memory header) {
-        require(rawHeader.length == 80, "Invalid header length");
+        require(rawHeader.length == 80, INVALID_LENGTH());
 
         // Version (4 bytes) - Convert from LE to BE
         header.version = uint32(bytesToUint256(reverseBytes(rawHeader[0:4])));
@@ -61,12 +80,41 @@ library BitcoinHeaderParser {
         return output;
     }
 
+    /// @notice Reverses bytes2
+    /// @param input The input bytes32 to reverse
+    /// @return The reversed bytes32
+    function reverseBytes32(bytes32 input) internal pure returns (bytes32) {
+        // Convert the bytes32 to bytes memory for easier manipulation
+        bytes memory temp = new bytes(32);
+
+        // Copy the bytes32 into our temporary array
+        assembly {
+            mstore(add(temp, 32), input)
+        }
+
+        // Create new bytes for the reversed result
+        bytes memory reversed = new bytes(32);
+
+        // Reverse the bytes
+        for (uint256 i = 0; i < 32; i++) {
+            reversed[i] = temp[31 - i];
+        }
+
+        // Convert back to bytes32
+        bytes32 result;
+        assembly {
+            result := mload(add(reversed, 32))
+        }
+
+        return result;
+    }
+
     /// @notice Decode a hex string into bytes
     /// @param hexStr The hex string (without 0x prefix)
     /// @return The decoded bytes
     function hexToBytes(string memory hexStr) internal pure returns (bytes memory) {
         bytes memory hexBytes = bytes(hexStr);
-        require(hexBytes.length % 2 == 0, "Invalid hex string length");
+        require(hexBytes.length % 2 == 0, INVALID_LENGTH());
 
         bytes memory result = new bytes(hexBytes.length / 2);
 
@@ -91,5 +139,30 @@ library BitcoinHeaderParser {
             return 10 + uint8(c) - uint8(bytes1("A"));
         }
         revert("Invalid hex character");
+    }
+
+    /// @notice Generate a sha256 double hash for a pair of bytes32 values
+    /// @param a bytes32 value
+    /// @param b bytes32 value
+    /// @return bytes32 sha256 double hash
+    function hashPair(bytes32 a, bytes32 b) internal view returns (bytes32) {
+        return BitcoinHeaderParser.sha256DoubleHash(abi.encodePacked(a, b));
+    }
+
+    /**
+     * @dev Expand compressed difficulty bits to full target
+     * @param bits Compressed difficulty target
+     * @return uint256 Expanded target
+     */
+    function expandDifficultyBits(uint32 bits) internal pure returns (uint256) {
+        uint32 exp = bits >> 24;
+        uint32 coef = bits & 0x00ffffff;
+
+        // Add safety checks
+        require(exp <= 32, EXPONENT_TOO_LARGE()); // Reasonable limit for Bitcoin
+
+        // Use a safer calculation method
+        if (exp <= 3) return coef >> (8 * (3 - exp));
+        return coef * (2 ** (8 * (exp - 3)));
     }
 }

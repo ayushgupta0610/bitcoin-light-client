@@ -57,7 +57,7 @@ contract LightClientTest is Test {
 
     function testVerifyProofOfWork() public {
         // Test with real Bitcoin block data
-        bytes32 blockHash = lightClient.getReversedBitcoinBlockHash(VALID_BLOCK_HEADER);
+        bytes32 blockHash = lightClient.getBlockHash(VALID_BLOCK_HEADER);
         uint32 difficultyBits = 0x1d00ffff; // Example difficulty bits
 
         vm.startPrank(blockSubmitter);
@@ -80,11 +80,11 @@ contract LightClientTest is Test {
         lightClient.expandDifficultyBits((maxExp << 24) | maxCoef);
     }
 
-    function testReverseBytes32() public view {
+    function testReverseBytes32() public pure {
         bytes32 original = 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef;
-        bytes32 reversed = lightClient.reverseBytes32(original);
+        bytes32 reversed = BitcoinHeaderParser.reverseBytes32(original);
         assertNotEq(original, reversed);
-        assertEq(lightClient.reverseBytes32(reversed), original);
+        assertEq(BitcoinHeaderParser.reverseBytes32(reversed), original);
     }
 
     function testCalculateMerkleRoot() public view {
@@ -95,7 +95,7 @@ contract LightClientTest is Test {
         txids[3] = 0x1d0cb83721529a062d9675b98d6e5c587e4a770fc84ed00abc5a5de04568a6e9;
 
         bytes32 root = lightClient.calculateMerkleRoot(txids);
-        bytes32 PRECALCULATED_MERKLE_ROOT = 0x6657a9252aacd5c0b2940996ecff952228c3067cc38d4885efb5a4ac4247e9f3; // (Natural byte order)
+        bytes32 PRECALCULATED_MERKLE_ROOT = 0xf3e94742aca4b5ef85488dc37c06c3282295ffec960994b2c0d5ac2a25a95766;
         assertTrue(root == PRECALCULATED_MERKLE_ROOT);
     }
 
@@ -127,62 +127,5 @@ contract LightClientTest is Test {
     //         }
     //     }
     //     return modified;
-    // }
-
-    // Fuzz testing for bits and verifyDifficultyTarget
-    // function testFuzz_SubmitBlockHeader(
-    //     uint256 version,
-    //     bytes32 prevBlock,
-    //     bytes32 merkleRoot,
-    //     uint256 timestamp,
-    //     uint256 difficultyBits,
-    //     uint256 nonce
-    // ) public {
-    //     // Ensure prevBlock matches the latest block hash
-    //     vm.assume(prevBlock == lightClient.latestBlockHash());
-
-    //     // Version: Bitcoin uses 4 bytes for version (current valid versions are 1-4)
-    //     vm.assume(version <= 4 && version > 0);
-
-    //     // Timestamp: Must be greater than median of last 11 blocks
-    //     // and cannot be more than 2 hours in the future from current block time
-    //     // vm.assume(timestamp <= block.timestamp + 2 hours);
-    //     // vm.assume(timestamp >= block.timestamp - 1 days); // reasonable past limit
-
-    //     // DifficultyBits: Must be 4 bytes (uint32) and within Bitcoin's difficulty range
-    //     // Bitcoin's minimum difficulty target (mainnet) is 0x1d00ffff
-    //     // Maximum difficulty (smallest target) currently around 0x1700_0000
-    //     vm.assume(difficultyBits <= 0x1d00ffff);
-    //     // vm.assume(difficultyBits >= 0x17000000);
-
-    //     // Nonce: Must be 4 bytes (uint32)
-    //     vm.assume(nonce <= type(uint32).max);
-
-    //     vm.startPrank(blockSubmitter);
-    //     lightClient.submitBlockHeader(bytes32(0), version, prevBlock, merkleRoot, timestamp, difficultyBits, nonce);
-    //     vm.stopPrank();
-    // }
-
-    // function testFuzzExpandDifficultyBits(uint256 bits) public view {
-    //     // Constrain bits to realistic values
-    //     bits = bound(bits, 0, 0xff << 24 | 0x00ffffff);
-
-    //     try lightClient.expandDifficultyBits(bits) returns (uint256 result) {
-    //         // Verify the result is not zero unless input was zero
-    //         if (bits != 0) {
-    //             assertTrue(result > 0, "Result should be positive for non-zero input");
-    //         }
-
-    //         // Verify the exponent is within reasonable bounds
-    //         uint256 exp = bits >> 24;
-    //         assertTrue(exp <= 32, "Exponent should be reasonable for valid difficulty");
-    //     } catch Error(string memory) {
-    //         // If it reverts, the input should be an edge case
-    //         assertTrue(
-    //             (bits >> 24) > 32 // Exponent too large
-    //                 || (bits & 0x00ffffff) == 0x00ffffff, // Coefficient at max
-    //             "Should only revert for edge cases"
-    //         );
-    //     }
     // }
 }

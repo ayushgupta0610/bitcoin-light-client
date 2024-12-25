@@ -78,7 +78,7 @@ contract LightClient is AccessControl {
         require(rawHeader.length == HEADER_LENGTH, INVALID_HEADER_LENGTH());
 
         // Calculate block hash in reverse byte order
-        bytes32 blockHash = getReversedBitcoinBlockHash(rawHeader);
+        bytes32 blockHash = getBlockHash(rawHeader);
 
         // Parse header
         BitcoinHeaderParser.BlockHeader memory parsedHeader = BitcoinHeaderParser.parseBlockHeader(rawHeader);
@@ -118,36 +118,36 @@ contract LightClient is AccessControl {
         _submitBlockHeader(blockHash, blockHeader);
     }
 
-    // This can also be made as verify and submit Block header by verifying if the parsedHeader hashes to blockHash by converting the struct to rawHeader first
-    function _submitBlockHeader(bytes32 blockHash, BitcoinHeaderParser.BlockHeader memory parsedHeader) private {
+    // This can also be made as verify and submit Block header by verifying if the blockHeader hashes to blockHash by converting the struct to rawHeader first
+    function _submitBlockHeader(bytes32 blockHash, BitcoinHeaderParser.BlockHeader memory blockHeader) private {
         // Verify the header connects to our chain
         require(
-            headers[parsedHeader.prevBlock].timestamp != 0 || parsedHeader.prevBlock == GENESIS_BLOCK,
+            headers[blockHeader.prevBlock].timestamp != 0 || blockHeader.prevBlock == GENESIS_BLOCK,
             PREVIOUS_BLOCK_UNKNOWN()
         );
 
         // Verify proof of work
-        require(verifyProofOfWork(blockHash, parsedHeader.difficultyBits), INVALID_PROOF_OF_WORK());
+        require(verifyProofOfWork(blockHash, blockHeader.difficultyBits), INVALID_PROOF_OF_WORK());
 
         // Set block height
-        parsedHeader.height = headers[parsedHeader.prevBlock].height + 1;
+        blockHeader.height = headers[blockHeader.prevBlock].height + 1;
 
         // Verify difficulty target if this is an adjustment block
-        if (parsedHeader.height % DIFFICULTY_ADJUSTMENT_INTERVAL == 0) {
-            verifyDifficultyTarget(parsedHeader);
+        if (blockHeader.height % DIFFICULTY_ADJUSTMENT_INTERVAL == 0) {
+            verifyDifficultyTarget(blockHeader);
         }
 
         // Store the header
-        headers[blockHash] = parsedHeader;
+        headers[blockHash] = blockHeader;
 
         // Update latest block hash if this is the new best chain
-        if (parsedHeader.height > headers[latestBlockHash].height) {
+        if (blockHeader.height > headers[latestBlockHash].height) {
             bytes32 prevBlockHash = latestBlockHash;
             latestBlockHash = blockHash;
-            emit ChainReorg(headers[latestBlockHash].height, prevBlockHash, latestBlockHash, parsedHeader.height);
+            emit ChainReorg(headers[latestBlockHash].height, prevBlockHash, latestBlockHash, blockHeader.height);
         }
 
-        emit BlockHeaderSubmitted(blockHash, parsedHeader.prevBlock, parsedHeader.height);
+        emit BlockHeaderSubmitted(blockHash, blockHeader.prevBlock, blockHeader.height);
     }
 
     /**
@@ -173,8 +173,8 @@ contract LightClient is AccessControl {
      * @return uint256 Expanded target
      */
     function expandDifficultyBits(uint32 bits) public pure returns (uint256) {
-        uint256 exp = bits >> 24;
-        uint256 coef = bits & 0x00ffffff;
+        uint32 exp = bits >> 24;
+        uint32 coef = bits & 0x00ffffff;
 
         // Add safety checks
         require(exp <= 32, EXPONENT_TOO_LARGE()); // Reasonable limit for Bitcoin
@@ -187,9 +187,9 @@ contract LightClient is AccessControl {
     /**
      * @dev Calculate merkle root in natural byte order from transaction ids (in natural byte order)
      * @param txids Merkle proof nodes
-     * @return bytes32 Calculated merkle root
+     * @return bytes32 Calculated merkle root in natural byte order
      */
-    function calculateMerkleRoot(bytes32[] memory txids) public view returns (bytes32) {
+    function _calculateMerkleRootInNaturalByteOrder(bytes32[] memory txids) internal view returns (bytes32) {
         require(txids.length != 0, INVALID_INPUT());
         if (txids.length == 1) return txids[0];
 
@@ -215,7 +215,7 @@ contract LightClient is AccessControl {
                 bytes32 right = i + 1 < currentLevelLength ? currentLevel[i + 1] : left;
 
                 // Hash the concatenated pair
-                nextLevel[index] = hashPair(left, right);
+                nextLevel[index] = BitcoinHeaderParser.hashPair(left, right);
             }
 
             // Update currentLevel for next iteration
@@ -224,10 +224,6 @@ contract LightClient is AccessControl {
         }
 
         return currentLevel[0];
-    }
-
-    function hashPair(bytes32 a, bytes32 b) internal view returns (bytes32) {
-        return sha256DoubleHash(abi.encodePacked(a, b));
     }
 
     /**
@@ -262,71 +258,39 @@ contract LightClient is AccessControl {
         require(expandDifficultyBits(header.difficultyBits) == newTarget, INVALID_DIFFICULTY_TARGET());
     }
 
-    function sha256DoubleHash(bytes memory bytesData) internal view returns (bytes32) {
-        // First SHA256
-        (bool success1, bytes memory result1) = address(0x2).staticcall(abi.encodePacked(bytesData));
-        require(success1, SHA256_FAILED());
+    /**
+     * @dev Calculate bitcoin block hash in reverse byte order
+     * @param blockHeader Raw block header bytes
+     * @return bytes32 Block hash in reverse byte order
+     */
+    function getBlockHash(bytes memory blockHeader) public view returns (bytes32) {
+        require(blockHeader.length == HEADER_LENGTH, INVALID_HEADER_LENGTH());
+        // First get the double SHA256 hash
+        bytes32 hash = BitcoinHeaderParser.sha256DoubleHash(blockHeader);
 
-        // Second SHA256
-        (bool success2, bytes memory result2) = address(0x2).staticcall(result1);
-        require(success2, SHA256_FAILED());
-
-        return bytes32(result2);
-    }
-
-    function reverseBytes32(bytes32 hash) public pure returns (bytes32) {
-        // Convert the bytes32 to bytes memory for easier manipulation
-        bytes memory temp = new bytes(32);
-
-        // Copy the bytes32 into our temporary array
-        assembly {
-            mstore(add(temp, 32), hash)
-        }
-
-        // Create new bytes for the reversed result
-        bytes memory reversed = new bytes(32);
-
-        // Reverse the bytes
-        for (uint256 i = 0; i < 32; i++) {
-            reversed[i] = temp[31 - i];
-        }
-
-        // Convert back to bytes32
-        bytes32 result;
-        assembly {
-            result := mload(add(reversed, 32))
-        }
-
-        return result;
+        // Then reverse it
+        return BitcoinHeaderParser.reverseBytes32(hash);
     }
 
     /**
-     * @dev Calculate bitcoin block hash in reverse order
-     * @param blockHeader Raw block header bytes
-     * @return bytes32 Block hash
+     * @dev Calculate merkle root in reversed byte order
+     * @param txids bytes32 txn ids
+     * @return bytes32 merkle root
      */
-    function getReversedBitcoinBlockHash(bytes memory blockHeader) public view returns (bytes32) {
+    function calculateMerkleRoot(bytes32[] memory txids) external view returns (bytes32) {
         // First get the double SHA256 hash
-        bytes32 hash = sha256DoubleHash(blockHeader);
+        bytes32 hash = _calculateMerkleRootInNaturalByteOrder(txids);
 
         // Then reverse it
-        return reverseBytes32(hash);
+        return BitcoinHeaderParser.reverseBytes32(hash);
     }
 
-    function getReversedMerkleRoot(bytes32[] memory txids) public view returns (bytes32) {
-        // First get the double SHA256 hash
-        bytes32 hash = calculateMerkleRoot(txids);
-
-        // Then reverse it
-        return reverseBytes32(hash);
-    }
-
+    /**
+     * @dev Get block header struct for a block hash
+     * @param blockHash block hash
+     * @return BlockHeader block header struct
+     */
     function getBlockHeader(bytes32 blockHash) external view returns (BitcoinHeaderParser.BlockHeader memory) {
         return headers[blockHash];
-    }
-
-    function getBlockHash(bytes calldata blockHeader) public view returns (bytes32) {
-        require(blockHeader.length == HEADER_LENGTH, INVALID_HEADER_LENGTH());
-        return sha256DoubleHash(blockHeader);
     }
 }
