@@ -74,6 +74,23 @@ contract LightClientTest is Test {
         vm.stopPrank();
     }
 
+    function test_RevertWhen_InconsistentBlockAddition() public {
+        vm.startPrank(blockSubmitter);
+
+        vm.expectRevert(LightClient.PREVIOUS_BLOCK_UNKNOWN.selector);
+        // Values from Block #2
+        lightClient.submitBlockHeader(
+            0x000000006a625f06636b8bb6ac7b960a8d03705d1ace08b1a19da3fdcc99ddbd,
+            1, // version
+            1231489544, // timestamp
+            0x1d00ffff, // difficultyBits
+            0x61bdd208, // nonce
+            0x00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048, // prevBlock
+            0x9b0fc92260312ce44e74ef369f5c66bbb85848f2eddd5a7a1cde251e54ccfdd5 // merkleRoot
+        );
+        vm.stopPrank();
+    }
+
     function test_SubmitBlockHeader() public {
         vm.startPrank(blockSubmitter);
 
