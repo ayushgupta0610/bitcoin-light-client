@@ -1,17 +1,3 @@
-// Helper function to convert hex string to bytes array
-function hexToBytes(hex) {
-  const bytes = [];
-  for (let i = 0; i < hex.length; i += 2) {
-    bytes.push(parseInt(hex.substr(i, 2), 16));
-  }
-  return bytes;
-}
-
-// Helper function to convert bytes array to hex string
-function bytesToHex(bytes) {
-  return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
 // Hash function used in the merkle root function (using crypto-js for SHA256)
 function hash256(hex) {
   const crypto = require("crypto");
@@ -77,19 +63,19 @@ console.log(result.match(/.{2}/g).reverse().join(""));
 // ]
 
 // Natural byte order
-[
-  "0x876dd0a3ef4a2816ffd1c12ab649825a958b0ff3bb3d6f3e1250f13ddbf0148c",
-  "0xc40297f730dd7b5a99567eb8d27b78758f607507c52292d02d4031895b52f2ff",
-  "0xc46e239ab7d28e2c019b6d66ad8fae98a56ef1f21aeecb94d1b1718186f05963",
-  "0x1d0cb83721529a062d9675b98d6e5c587e4a770fc84ed00abc5a5de04568a6e9",
-];
+// [
+//   "0x876dd0a3ef4a2816ffd1c12ab649825a958b0ff3bb3d6f3e1250f13ddbf0148c",
+//   "0xc40297f730dd7b5a99567eb8d27b78758f607507c52292d02d4031895b52f2ff",
+//   "0xc46e239ab7d28e2c019b6d66ad8fae98a56ef1f21aeecb94d1b1718186f05963",
+//   "0x1d0cb83721529a062d9675b98d6e5c587e4a770fc84ed00abc5a5de04568a6e9",
+// ];
 // 0x6657a9252aacd5c0b2940996ecff952228c3067cc38d4885efb5a4ac4247e9f3 (Natural byte order)
 // 0xf3e94742aca4b5ef85488dc37c06c3282295ffec960994b2c0d5ac2a25a95766 (Reverse byte order)
 
 // Reverse byte order
-[
-  "0x8c14f0db3df150123e6f3dbbf30f8b955a8249b62ac1d1ff16284aefa3d06d87",
-  "0xfff2525b8931402dd09222c50775608f75787bd2b87e56995a7bdd30f79702c4",
-  "0x6359f0868171b1d194cbee1af2f16ea598ae8fad666d9b012c8ed2b79a236ec4",
-  "0xe9a66845e05d5abc0ad04ec80f774a7e585c6e8db975962d069a522137b80c1d",
-];
+// [
+//   "0x8c14f0db3df150123e6f3dbbf30f8b955a8249b62ac1d1ff16284aefa3d06d87",
+//   "0xfff2525b8931402dd09222c50775608f75787bd2b87e56995a7bdd30f79702c4",
+//   "0x6359f0868171b1d194cbee1af2f16ea598ae8fad666d9b012c8ed2b79a236ec4",
+//   "0xe9a66845e05d5abc0ad04ec80f774a7e585c6e8db975962d069a522137b80c1d",
+// ];

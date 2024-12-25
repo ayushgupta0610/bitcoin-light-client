@@ -16,6 +16,7 @@ contract LightClientTest is Test {
     bytes constant BLOCK_1_HEADER =
         hex"010000006fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d61900000000003ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a29ab5f49ffff001d1dac2b7c";
     bytes32 constant BLOCK_1_HASH = 0x00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048;
+    uint40 private constant TARGET_TIMESPAN = 14 * 24 * 60 * 60; // 2 weeks
 
     function setUp() public {
         blockSubmitter = makeAddr("blockSubmitter");
@@ -95,7 +96,7 @@ contract LightClientTest is Test {
         vm.stopPrank();
     }
 
-    function test_VerifyProofOfWork() public view {
+    function test_VerifyProofOfWork() public pure {
         // Real Bitcoin block #1 values
         bytes32 blockHash = 0x00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048;
         uint32 bits = 0x1d00ffff;
@@ -120,6 +121,7 @@ contract LightClientTest is Test {
 
     function test_CalculateMerkleRoot() public view {
         bytes32[] memory txids = new bytes32[](4);
+        // Block #100k : https://btcscan.org/block/000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506
         txids[0] = 0x8c14f0db3df150123e6f3dbbf30f8b955a8249b62ac1d1ff16284aefa3d06d87;
         txids[1] = 0xfff2525b8931402dd09222c50775608f75787bd2b87e56995a7bdd30f79702c4;
         txids[2] = 0x6359f0868171b1d194cbee1af2f16ea598ae8fad666d9b012c8ed2b79a236ec4;
@@ -184,43 +186,86 @@ contract LightClientTest is Test {
         vm.stopPrank();
     }
 
-    function test_DifficultyAdjustment() public {
+    function test_DifficultyTargetAdjustment() public {
         vm.startPrank(blockSubmitter);
 
-        // Submit 2015 blocks with constant difficulty
         bytes32 prevHash = GENESIS_BLOCK;
         uint40 startTime = 1231006505; // Genesis block timestamp
+        uint32 INITIAL_BITS = 0x1d00ffff;
 
-        for (uint32 i = 1; i < 2016; i++) {
-            bytes32 blockHash = keccak256(abi.encodePacked(prevHash, i)); // Using keccak256 to generate unique hashes
-            lightClient.submitBlockHeader(
-                blockHash,
-                1, // version
-                startTime + i * 600, // 10 minute intervals
-                0x1d00ffff, // difficultyBits
-                1, // nonce (we're not verifying PoW in this test)
+        // Mock a valid block hash that satisfies PoW requirement
+        // This is a real Bitcoin block hash that satisfies the initial difficulty
+        bytes32 VALID_POW_HASH = 0x00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048;
+
+        // Submit 2015 blocks (Important catch: https://bitcoin.stackexchange.com/questions/5838/how-is-difficulty-calculated)
+        for (uint32 i = 1; i < 2015; i++) {
+            // Use the same valid PoW hash for all blocks - this is just for testing
+            submitTestBlock(
+                VALID_POW_HASH,
+                startTime + (i * 600), // 10 minute intervals
+                INITIAL_BITS,
                 prevHash,
-                keccak256(abi.encodePacked("merkleroot", i)) // unique merkle root
+                1
             );
-            prevHash = blockHash;
+            prevHash = VALID_POW_HASH;
         }
 
-        // Submit adjustment block (2016th block)
-        bytes32 adjustmentBlockHash = keccak256(abi.encodePacked(prevHash, uint32(2016)));
-        uint40 finalTimestamp = startTime + 2016 * 600; // Exactly 2 weeks
+        // Test Case 1: Exactly 2 weeks (no change in difficulty)
+        {
+            uint40 exactTwoWeeks = startTime + (2015 * 600);
+            submitTestBlock(
+                VALID_POW_HASH,
+                exactTwoWeeks,
+                INITIAL_BITS, // Should remain the same
+                prevHash,
+                1
+            );
+        }
 
-        vm.expectRevert(abi.encodeWithSignature("INVALID_PROOF_OF_WORK()"));
-        lightClient.submitBlockHeader(
-            adjustmentBlockHash,
-            1,
-            finalTimestamp,
-            0x1d00ffff, // Same difficulty (perfect 10-minute intervals)
-            1,
-            prevHash,
-            keccak256(abi.encodePacked("merkleroot", uint32(2016)))
-        );
+        // Test Case 2: Too fast (blocks mined in half the expected time)
+        {
+            uint40 oneWeekLater = startTime + (TARGET_TIMESPAN / 2);
+
+            vm.expectRevert(abi.encodeWithSignature("INVALID_DIFFICULTY_TARGET()"));
+            submitTestBlock(
+                VALID_POW_HASH,
+                oneWeekLater,
+                INITIAL_BITS, // Should fail as difficulty needs to increase
+                prevHash,
+                1
+            );
+        }
+
+        // Test Case 3: Too slow
+        {
+            uint40 fourWeeksLater = startTime + (TARGET_TIMESPAN * 2);
+
+            vm.expectRevert(abi.encodeWithSignature("INVALID_DIFFICULTY_TARGET()"));
+            submitTestBlock(
+                VALID_POW_HASH,
+                fourWeeksLater,
+                INITIAL_BITS, // Should fail as difficulty needs to decrease
+                prevHash,
+                1
+            );
+        }
 
         vm.stopPrank();
+    }
+
+    // Helper function to submit blocks quickly
+    function submitTestBlock(bytes32 blockHash, uint40 timestamp, uint32 bits, bytes32 prevBlockHash, uint32 nonce)
+        internal
+    {
+        lightClient.submitBlockHeader(
+            blockHash,
+            1, // version
+            timestamp,
+            bits,
+            nonce,
+            prevBlockHash,
+            bytes32(0) // merkle root doesn't matter for this test
+        );
     }
 
     // Helper function to create mock block headers

@@ -14,11 +14,8 @@ contract LightClient is AccessControl {
     error INVALID_HEADER_LENGTH();
     error PREVIOUS_BLOCK_UNKNOWN();
     error INVALID_PROOF_OF_WORK();
-    error INVALID_BLOCK_HEADER();
     error INVALID_DIFFICULTY_TARGET();
-    error SHA256_FAILED();
     error INVALID_INPUT();
-    error EXPONENT_TOO_LARGE();
 
     // Block submitter role
     bytes32 private constant BLOCK_SUBMIT_ROLE = keccak256("BLOCK_SUBMIT_ROLE");
@@ -117,7 +114,7 @@ contract LightClient is AccessControl {
         _submitBlockHeader(blockHash, blockHeader);
     }
 
-    // This can also be made as verify and submit Block header by verifying if the blockHeader hashes to blockHash by converting the struct to rawHeader first
+    // This can also be made as verify and submit Block header by verifying if the blockHeader hashes to blockHash by converting the struct to rawHeader first - Will add to the gas cost!
     function _submitBlockHeader(bytes32 blockHash, BitcoinUtils.BlockHeader memory blockHeader) private {
         // Verify the header connects to our chain
         require(
@@ -207,7 +204,7 @@ contract LightClient is AccessControl {
         // Calculate actual timespan
         uint256 actualTimespan = header.timestamp - lastAdjustment.timestamp;
 
-        // Apply bounds of 1/4 and 4x target timespan
+        // Apply bounds of 1/4 and 4x target timespan (3.5 days to 8 weeks)
         actualTimespan = actualTimespan < TARGET_TIMESPAN / 4 ? TARGET_TIMESPAN / 4 : actualTimespan;
         actualTimespan = actualTimespan > TARGET_TIMESPAN * 4 ? TARGET_TIMESPAN * 4 : actualTimespan;
 

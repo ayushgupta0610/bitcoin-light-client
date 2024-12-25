@@ -50,16 +50,3 @@ console.log("blockhash: ", blockhash); //=> 6fe28c0ab6f1b372c1a6a246ae63f74f931e
 // Split into pairs of characters, reverse the array, and join back together
 const reversedBlockhash = blockhash.match(/.{2}/g).reverse().join("");
 console.log("reversedBlockhash: ", reversedBlockhash); //=> 000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f
-
-// Given a block header the below will generate natural byte order block hash in solidity
-// function getNaturalByteOrderBlockHash(bytes memory blockHeader) public view returns (bytes32) {
-//   // First SHA256
-//   (bool success1, bytes memory result1) = address(0x2).staticcall(abi.encodePacked(blockHeader));
-//   require(success1, "First SHA256 failed");
-
-//   // Second SHA256
-//   (bool success2, bytes memory result2) = address(0x2).staticcall(result1);
-//   require(success2, "Second SHA256 failed");
-
-//   return bytes32(result2);
-// }
