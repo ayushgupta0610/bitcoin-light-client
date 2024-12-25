@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.28;
 
-import {console} from "forge-std/console.sol";
-import {BitcoinHeaderParser} from "./BitcoinHeaderParser.sol";
+import {BitcoinUtils} from "./BitcoinUtils.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
 /**
@@ -40,7 +39,7 @@ contract LightClient is AccessControl {
     bytes32 public constant GENESIS_BLOCK = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f;
 
     // Mapping of block hash to block header
-    mapping(bytes32 => BitcoinHeaderParser.BlockHeader) private headers;
+    mapping(bytes32 => BitcoinUtils.BlockHeader) private headers;
 
     // Last block hash initialised to genesis block
     bytes32 public latestBlockHash = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f;
@@ -58,7 +57,7 @@ contract LightClient is AccessControl {
     }
 
     function _initialiseGenesisBlock() private {
-        BitcoinHeaderParser.BlockHeader memory blockHeader = BitcoinHeaderParser.BlockHeader({
+        BitcoinUtils.BlockHeader memory blockHeader = BitcoinUtils.BlockHeader({
             version: 0x01,
             prevBlock: 0x0000000000000000000000000000000000000000000000000000000000000000,
             merkleRoot: 0x4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b,
@@ -81,7 +80,7 @@ contract LightClient is AccessControl {
         bytes32 blockHash = getBlockHash(rawHeader);
 
         // Parse header
-        BitcoinHeaderParser.BlockHeader memory parsedHeader = BitcoinHeaderParser.parseBlockHeader(rawHeader);
+        BitcoinUtils.BlockHeader memory parsedHeader = BitcoinUtils.parseBlockHeader(rawHeader);
 
         // Submit block header
         _submitBlockHeader(blockHash, parsedHeader);
@@ -106,7 +105,7 @@ contract LightClient is AccessControl {
         bytes32 prevBlock, // 32 bytes
         bytes32 merkleRoot // 32 bytes
     ) external onlyRole(BLOCK_SUBMIT_ROLE) {
-        BitcoinHeaderParser.BlockHeader memory blockHeader = BitcoinHeaderParser.BlockHeader({
+        BitcoinUtils.BlockHeader memory blockHeader = BitcoinUtils.BlockHeader({
             version: version, // Block version
             prevBlock: prevBlock,
             merkleRoot: merkleRoot,
@@ -119,7 +118,7 @@ contract LightClient is AccessControl {
     }
 
     // This can also be made as verify and submit Block header by verifying if the blockHeader hashes to blockHash by converting the struct to rawHeader first
-    function _submitBlockHeader(bytes32 blockHash, BitcoinHeaderParser.BlockHeader memory blockHeader) private {
+    function _submitBlockHeader(bytes32 blockHash, BitcoinUtils.BlockHeader memory blockHeader) private {
         // Verify the header connects to our chain
         require(
             headers[blockHeader.prevBlock].timestamp != 0 || blockHeader.prevBlock == GENESIS_BLOCK,
@@ -127,7 +126,7 @@ contract LightClient is AccessControl {
         );
 
         // Verify proof of work
-        require(verifyProofOfWork(blockHash, blockHeader.difficultyBits), INVALID_PROOF_OF_WORK());
+        require(BitcoinUtils.verifyProofOfWork(blockHash, blockHeader.difficultyBits), INVALID_PROOF_OF_WORK());
 
         // Set block height
         blockHeader.height = headers[blockHeader.prevBlock].height + 1;
@@ -148,40 +147,6 @@ contract LightClient is AccessControl {
         }
 
         emit BlockHeaderSubmitted(blockHash, blockHeader.prevBlock, blockHeader.height);
-    }
-
-    /**
-     * @dev Verify the proof of work meets difficulty target
-     * @param blockHash Calculated block hash
-     * @param difficultyBits Compressed difficulty target
-     * @return bool True if proof of work is valid
-     */
-    function verifyProofOfWork(bytes32 blockHash, uint32 difficultyBits) public pure returns (bool) {
-        // Extract difficulty target from compressed bits
-        uint256 target = expandDifficultyBits(difficultyBits);
-
-        // Convert hash to uint256 for comparison
-        uint256 hashNum = uint256(blockHash);
-
-        // Valid if hash is less than target
-        return hashNum < target;
-    }
-
-    /**
-     * @dev Expand compressed difficulty bits to full target
-     * @param bits Compressed difficulty target
-     * @return uint256 Expanded target
-     */
-    function expandDifficultyBits(uint32 bits) public pure returns (uint256) {
-        uint32 exp = bits >> 24;
-        uint32 coef = bits & 0x00ffffff;
-
-        // Add safety checks
-        require(exp <= 32, EXPONENT_TOO_LARGE()); // Reasonable limit for Bitcoin
-
-        // Use a safer calculation method
-        if (exp <= 3) return coef >> (8 * (3 - exp));
-        return coef * (2 ** (8 * (exp - 3)));
     }
 
     /**
@@ -215,7 +180,7 @@ contract LightClient is AccessControl {
                 bytes32 right = i + 1 < currentLevelLength ? currentLevel[i + 1] : left;
 
                 // Hash the concatenated pair
-                nextLevel[index] = BitcoinHeaderParser.hashPair(left, right);
+                nextLevel[index] = BitcoinUtils.hashPair(left, right);
             }
 
             // Update currentLevel for next iteration
@@ -230,14 +195,14 @@ contract LightClient is AccessControl {
      * @dev Verify difficulty target for adjustment blocks
      * @param header New block header
      */
-    function verifyDifficultyTarget(BitcoinHeaderParser.BlockHeader memory header) public view {
+    function verifyDifficultyTarget(BitcoinUtils.BlockHeader memory header) public view {
         // Get the last adjustment block
         bytes32 cursor = header.prevBlock;
         for (uint256 i = 0; i < DIFFICULTY_ADJUSTMENT_INTERVAL - 1; i++) {
             cursor = headers[cursor].prevBlock;
         }
 
-        BitcoinHeaderParser.BlockHeader memory lastAdjustment = headers[cursor];
+        BitcoinUtils.BlockHeader memory lastAdjustment = headers[cursor];
 
         // Calculate actual timespan
         uint256 actualTimespan = header.timestamp - lastAdjustment.timestamp;
@@ -247,15 +212,36 @@ contract LightClient is AccessControl {
         actualTimespan = actualTimespan > TARGET_TIMESPAN * 4 ? TARGET_TIMESPAN * 4 : actualTimespan;
 
         // Calculate new target
-        uint256 newTarget = expandDifficultyBits(lastAdjustment.difficultyBits);
+        uint256 newTarget = BitcoinUtils.expandDifficultyBits(lastAdjustment.difficultyBits);
         newTarget = (newTarget * actualTimespan) / TARGET_TIMESPAN;
 
         // Ensure new target is below max target allowed
-        uint256 maxTarget = expandDifficultyBits(MINIMUM_DIFFICULTY_BITS);
+        uint256 maxTarget = BitcoinUtils.expandDifficultyBits(MINIMUM_DIFFICULTY_BITS);
         newTarget = newTarget > maxTarget ? maxTarget : newTarget;
 
         // Verify header difficulty matches calculated target
-        require(expandDifficultyBits(header.difficultyBits) == newTarget, INVALID_DIFFICULTY_TARGET());
+        require(BitcoinUtils.expandDifficultyBits(header.difficultyBits) == newTarget, INVALID_DIFFICULTY_TARGET());
+    }
+
+    /**
+     * @dev Calculate serialized block header from BlockHeader struct
+     * @param version Block version
+     * @param blockTimestamp  Block timestamp
+     * @param difficultyBits Compressed difficulty target
+     * @param nonce used for mining
+     * @param prevBlock Previous block hash
+     * @param merkleRoot Merkle tree root hash
+     * @return bytes serialized block header
+     */
+    function getSeralizedBlockHeader(
+        uint32 version, // 4 bytes
+        uint40 blockTimestamp, // 5 bytes
+        uint32 difficultyBits, // 4 bytes
+        uint32 nonce, // 4 bytes
+        bytes32 prevBlock, // 32 bytes
+        bytes32 merkleRoot // 32 bytes
+    ) external pure returns (bytes memory) {
+        return BitcoinUtils.serializeBlockHeader(version, blockTimestamp, difficultyBits, nonce, prevBlock, merkleRoot);
     }
 
     /**
@@ -266,10 +252,10 @@ contract LightClient is AccessControl {
     function getBlockHash(bytes memory blockHeader) public view returns (bytes32) {
         require(blockHeader.length == HEADER_LENGTH, INVALID_HEADER_LENGTH());
         // First get the double SHA256 hash
-        bytes32 hash = BitcoinHeaderParser.sha256DoubleHash(blockHeader);
+        bytes32 hash = BitcoinUtils.sha256DoubleHash(blockHeader);
 
         // Then reverse it
-        return BitcoinHeaderParser.reverseBytes32(hash);
+        return BitcoinUtils.reverseBytes32(hash);
     }
 
     /**
@@ -278,11 +264,12 @@ contract LightClient is AccessControl {
      * @return bytes32 merkle root
      */
     function calculateMerkleRoot(bytes32[] memory txids) external view returns (bytes32) {
+        bytes32[] memory txIdsInNaturalBytesOrder = BitcoinUtils.reverseBytes32Array(txids);
         // First get the double SHA256 hash
-        bytes32 hash = _calculateMerkleRootInNaturalByteOrder(txids);
+        bytes32 hash = _calculateMerkleRootInNaturalByteOrder(txIdsInNaturalBytesOrder);
 
         // Then reverse it
-        return BitcoinHeaderParser.reverseBytes32(hash);
+        return BitcoinUtils.reverseBytes32(hash);
     }
 
     /**
@@ -290,7 +277,7 @@ contract LightClient is AccessControl {
      * @param blockHash block hash
      * @return BlockHeader block header struct
      */
-    function getBlockHeader(bytes32 blockHash) external view returns (BitcoinHeaderParser.BlockHeader memory) {
+    function getBlockHeader(bytes32 blockHash) external view returns (BitcoinUtils.BlockHeader memory) {
         return headers[blockHash];
     }
 }

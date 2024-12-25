@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.28;
 
-library BitcoinHeaderParser {
+library BitcoinUtils {
     error SHA256_FAILED();
     error EXPONENT_TOO_LARGE();
     error INVALID_LENGTH();
@@ -70,7 +70,7 @@ library BitcoinHeaderParser {
     /// @notice Reverses the order of bytes in a byte array
     /// @param input The input bytes to reverse
     /// @return The reversed bytes
-    function reverseBytes(bytes calldata input) internal pure returns (bytes memory) {
+    function reverseBytes(bytes memory input) internal pure returns (bytes memory) {
         bytes memory output = new bytes(input.length);
 
         for (uint256 i = 0; i < input.length; i++) {
@@ -80,7 +80,7 @@ library BitcoinHeaderParser {
         return output;
     }
 
-    /// @notice Reverses bytes2
+    /// @notice Reverses bytes32
     /// @param input The input bytes32 to reverse
     /// @return The reversed bytes32
     function reverseBytes32(bytes32 input) internal pure returns (bytes32) {
@@ -107,6 +107,18 @@ library BitcoinHeaderParser {
         }
 
         return result;
+    }
+
+    /// @notice Reverses bytes32 array
+    /// @param input The input bytes32 array to reverse
+    /// @return The reversed bytes32 array
+    function reverseBytes32Array(bytes32[] memory input) internal pure returns (bytes32[] memory) {
+        uint256 length = input.length;
+        bytes32[] memory output = new bytes32[](length);
+        for (uint256 i = 0; i < length; i++) {
+            output[i] = reverseBytes32(input[i]);
+        }
+        return output;
     }
 
     /// @notice Decode a hex string into bytes
@@ -146,7 +158,65 @@ library BitcoinHeaderParser {
     /// @param b bytes32 value
     /// @return bytes32 sha256 double hash
     function hashPair(bytes32 a, bytes32 b) internal view returns (bytes32) {
-        return BitcoinHeaderParser.sha256DoubleHash(abi.encodePacked(a, b));
+        return BitcoinUtils.sha256DoubleHash(abi.encodePacked(a, b));
+    }
+
+    /// @notice Serializes a BlockHeader struct into raw Bitcoin block header bytes
+    /// @param version Block version
+    /// @param blockTimestamp  Block timestamp
+    /// @param difficultyBits Compressed difficulty target
+    /// @param nonce used for mining
+    /// @param prevBlock Previous block hash
+    /// @param merkleRoot Merkle tree root hash
+    /// @return The 80-byte Bitcoin block header
+    function serializeBlockHeader(
+        uint32 version,
+        uint40 blockTimestamp,
+        uint32 difficultyBits,
+        uint32 nonce,
+        bytes32 prevBlock,
+        bytes32 merkleRoot
+    ) internal pure returns (bytes memory) {
+        bytes memory rawHeader = new bytes(80);
+
+        // Version (4 bytes) - Convert to LE
+        bytes memory versionBytes = reverseBytes(abi.encodePacked(version));
+        for (uint256 i = 0; i < 4; i++) {
+            rawHeader[i] = versionBytes[i];
+        }
+
+        // Previous block hash (32 bytes) - Reverse byte order
+        bytes memory prevBlockBytes = reverseBytes(abi.encodePacked(prevBlock));
+        for (uint256 i = 0; i < 32; i++) {
+            rawHeader[i + 4] = prevBlockBytes[i];
+        }
+
+        // Merkle root (32 bytes) - Reverse byte order
+        bytes memory merkleRootBytes = reverseBytes(abi.encodePacked(merkleRoot));
+        for (uint256 i = 0; i < 32; i++) {
+            rawHeader[i + 36] = merkleRootBytes[i];
+        }
+
+        // Timestamp (4 bytes) - Convert to LE
+        // Note: Even though timestamp is uint40, Bitcoin only uses 4 bytes
+        bytes memory timestampBytes = reverseBytes(abi.encodePacked(uint32(blockTimestamp)));
+        for (uint256 i = 0; i < 4; i++) {
+            rawHeader[i + 68] = timestampBytes[i];
+        }
+
+        // Difficulty bits (4 bytes) - Convert to LE
+        bytes memory bitsBytes = reverseBytes(abi.encodePacked(difficultyBits));
+        for (uint256 i = 0; i < 4; i++) {
+            rawHeader[i + 72] = bitsBytes[i];
+        }
+
+        // Nonce (4 bytes) - Convert to LE
+        bytes memory nonceBytes = reverseBytes(abi.encodePacked(nonce));
+        for (uint256 i = 0; i < 4; i++) {
+            rawHeader[i + 76] = nonceBytes[i];
+        }
+
+        return rawHeader;
     }
 
     /**
@@ -164,5 +234,22 @@ library BitcoinHeaderParser {
         // Use a safer calculation method
         if (exp <= 3) return coef >> (8 * (3 - exp));
         return coef * (2 ** (8 * (exp - 3)));
+    }
+
+    /**
+     * @dev Verify the proof of work meets difficulty target
+     * @param blockHash Calculated block hash
+     * @param difficultyBits Compressed difficulty target
+     * @return bool True if proof of work is valid
+     */
+    function verifyProofOfWork(bytes32 blockHash, uint32 difficultyBits) internal pure returns (bool) {
+        // Extract difficulty target from compressed bits
+        uint256 target = expandDifficultyBits(difficultyBits);
+
+        // Convert hash to uint256 for comparison
+        uint256 hashNum = uint256(blockHash);
+
+        // Valid if hash is less than target
+        return hashNum < target;
     }
 }
