@@ -58,7 +58,7 @@ contract LightClientTest is Test {
     function testVerifyProofOfWork() public {
         // Test with real Bitcoin block data
         bytes32 blockHash = lightClient.getReversedBitcoinBlockHash(VALID_BLOCK_HEADER);
-        uint256 difficultyBits = 0x1d00ffff; // Example difficulty bits
+        uint32 difficultyBits = 0x1d00ffff; // Example difficulty bits
 
         vm.startPrank(blockSubmitter);
         bool isValid = lightClient.verifyProofOfWork(blockHash, difficultyBits);
@@ -72,8 +72,8 @@ contract LightClientTest is Test {
         lightClient.expandDifficultyBits(0x1d00ffff); // Maximum difficulty bits
 
         // Test edge cases
-        uint256 maxExp = 0xff; // Maximum possible exponent (8 bits)
-        uint256 maxCoef = 0x00ffffff; // Maximum possible coefficient (24 bits)
+        uint32 maxExp = 0xff; // Maximum possible exponent (8 bits)
+        uint32 maxCoef = 0x00ffffff; // Maximum possible coefficient (24 bits)
 
         // This should revert due to overflow
         vm.expectRevert();

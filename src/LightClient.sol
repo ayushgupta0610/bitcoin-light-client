@@ -25,16 +25,16 @@ contract LightClient is AccessControl {
     bytes32 private constant BLOCK_SUBMIT_ROLE = keccak256("BLOCK_SUBMIT_ROLE");
 
     // Bitcoin block header is 80 bytes
-    uint256 private constant HEADER_LENGTH = 80;
+    uint8 private constant HEADER_LENGTH = 80;
 
     // Minimum difficulty bits
-    uint256 private constant MINIMUM_DIFFICULTY_BITS = 0x1d00ffff;
+    uint32 private constant MINIMUM_DIFFICULTY_BITS = 0x1d00ffff;
 
     // Block header interval for difficulty adjustment
-    uint256 private constant DIFFICULTY_ADJUSTMENT_INTERVAL = 2016;
+    uint32 private constant DIFFICULTY_ADJUSTMENT_INTERVAL = 2016;
 
     // Target block time in seconds
-    uint256 private constant TARGET_TIMESPAN = 14 * 24 * 60 * 60; // 2 weeks
+    uint40 private constant TARGET_TIMESPAN = 14 * 24 * 60 * 60; // 2 weeks
 
     // Genesis block header hash
     bytes32 public constant GENESIS_BLOCK = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f;
@@ -46,12 +46,9 @@ contract LightClient is AccessControl {
     bytes32 public latestBlockHash = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f;
 
     // Events
-    event BlockHeaderSubmitted(bytes32 indexed blockHash, bytes32 indexed prevBlock, uint256 height);
+    event BlockHeaderSubmitted(bytes32 indexed blockHash, bytes32 indexed prevBlock, uint32 height);
     event ChainReorg(
-        uint256 prevBlockHeight,
-        bytes32 indexed prevBlockHash,
-        bytes32 indexed latestBlockHash,
-        uint256 latestBlockHeight
+        uint32 prevBlockHeight, bytes32 indexed prevBlockHash, bytes32 indexed latestBlockHash, uint32 latestBlockHeight
     );
 
     constructor(address blockSubmitter) {
@@ -159,7 +156,7 @@ contract LightClient is AccessControl {
      * @param difficultyBits Compressed difficulty target
      * @return bool True if proof of work is valid
      */
-    function verifyProofOfWork(bytes32 blockHash, uint256 difficultyBits) public pure returns (bool) {
+    function verifyProofOfWork(bytes32 blockHash, uint32 difficultyBits) public pure returns (bool) {
         // Extract difficulty target from compressed bits
         uint256 target = expandDifficultyBits(difficultyBits);
 
@@ -175,7 +172,7 @@ contract LightClient is AccessControl {
      * @param bits Compressed difficulty target
      * @return uint256 Expanded target
      */
-    function expandDifficultyBits(uint256 bits) public pure returns (uint256) {
+    function expandDifficultyBits(uint32 bits) public pure returns (uint256) {
         uint256 exp = bits >> 24;
         uint256 coef = bits & 0x00ffffff;
 
