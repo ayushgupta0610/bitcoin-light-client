@@ -133,7 +133,7 @@ contract LightClientTest is Test {
 
         // Test maximum exponent
         vm.expectRevert(abi.encodeWithSignature("EXPONENT_TOO_LARGE()"));
-        BitcoinUtils.expandDifficultyBits(0x2100ffff);
+        BitcoinUtils.expandDifficultyBits(0x2100ffff); // Exponent can't be more than 32
     }
 
     function test_CalculateMerkleRoot() public view {
@@ -199,6 +199,61 @@ contract LightClientTest is Test {
         assertEq(lightClient.latestBlockHash(), block2Hash);
         BitcoinUtils.BlockHeader memory newHead = lightClient.getBlockHeader(block2Hash);
         assertEq(newHead.height, 2);
+
+        vm.stopPrank();
+    }
+
+    function test_ChainReorg() public {
+        vm.startPrank(blockSubmitter);
+
+        // Block #1 (Main chain)
+        bytes32 block1Hash = 0x00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048;
+        lightClient.submitBlockHeader(
+            block1Hash,
+            1,
+            1231469665,
+            0x1d00ffff,
+            0x7c2bac1d,
+            GENESIS_BLOCK,
+            0x0e3e2357e806b6cdb1f70b54c3a3a17b6714ee1f0e68bebb44a74b1efd512098
+        );
+
+        // Block #2 (Main chain)
+        bytes32 block2Hash = 0x000000006a625f06636b8bb6ac7b960a8d03705d1ace08b1a19da3fdcc99ddbd;
+        lightClient.submitBlockHeader(
+            block2Hash,
+            1,
+            1231469744,
+            0x1d00ffff,
+            0x2883949c,
+            block1Hash,
+            0x9b0fc92260312ce44e74ef369f5c66bbb85848f2eddd5a7a1cde251e54ccfdd5
+        );
+
+        // Verify current chain state
+        assertEq(lightClient.latestBlockHash(), block2Hash);
+        assertEq(lightClient.getBlockHeader(block2Hash).height, 2);
+
+        // Now submit a competing chain from block #1
+        // Competing Block #2 with same parent but different content
+        bytes32 competingBlock2Hash = 0x000000006c02c8ea6e4ff69651f7fcde348fb9d557a06e6957b65552002a7820;
+
+        vm.expectEmit(true, true, true, true);
+        emit LightClient.ChainReorg(2, block2Hash, 2, competingBlock2Hash);
+
+        lightClient.submitBlockHeader(
+            competingBlock2Hash,
+            1,
+            1231470173, // Later timestamp
+            0x1d00ffff,
+            0x1dac2b7c,
+            block1Hash, // Same parent as the original block 2
+            0x0e3e2357e806b6cdb1f70b54c3a3a17b6714ee1f0e68bebb44a74b1efd512098
+        );
+
+        // Verify the chain has been reorganized
+        assertEq(lightClient.latestBlockHash(), competingBlock2Hash);
+        assertEq(lightClient.getBlockHeader(competingBlock2Hash).height, 2);
 
         vm.stopPrank();
     }

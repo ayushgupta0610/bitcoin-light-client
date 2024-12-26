@@ -34,7 +34,7 @@ contract LightClient is AccessControl {
     uint32 private constant TARGET_TIMESPAN = 14 * 24 * 60 * 60; // 2 weeks
 
     // Genesis block header hash
-    bytes32 public constant GENESIS_BLOCK = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f;
+    bytes32 private constant GENESIS_BLOCK = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f;
 
     // Last block hash initialised to genesis block
     bytes32 public latestBlockHash = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f;
@@ -45,7 +45,7 @@ contract LightClient is AccessControl {
     // Events
     event BlockHeaderSubmitted(bytes32 indexed blockHash, bytes32 indexed prevBlock, uint32 height);
     event ChainReorg(
-        uint32 prevBlockHeight, bytes32 indexed prevBlockHash, bytes32 indexed latestBlockHash, uint32 latestBlockHeight
+        uint32 prevBlockHeight, bytes32 indexed prevBlockHash, uint32 latestBlockHeight, bytes32 indexed latestBlockHash
     );
 
     constructor(address blockSubmitter) {
@@ -118,10 +118,7 @@ contract LightClient is AccessControl {
     // This can also be made as verify and submit Block header by verifying if the blockHeader hashes to blockHash by converting the struct to rawHeader first - Will add to the gas cost!
     function _submitBlockHeader(bytes32 blockHash, BitcoinUtils.BlockHeader memory blockHeader) private {
         // Verify the header connects to our chain
-        require(
-            headers[blockHeader.prevBlock].timestamp != 0 || blockHeader.prevBlock == GENESIS_BLOCK,
-            PREVIOUS_BLOCK_UNKNOWN()
-        );
+        require(headers[blockHeader.prevBlock].timestamp != 0, PREVIOUS_BLOCK_UNKNOWN());
 
         // Verify proof of work
         require(BitcoinUtils.verifyProofOfWork(blockHash, blockHeader.difficultyBits), INVALID_PROOF_OF_WORK());
@@ -138,11 +135,11 @@ contract LightClient is AccessControl {
         headers[blockHash] = blockHeader;
 
         // Update latest block hash if this is the new best chain
-        if (blockHeader.height > headers[latestBlockHash].height) {
-            bytes32 prevBlockHash = latestBlockHash;
-            latestBlockHash = blockHash;
-            emit ChainReorg(headers[latestBlockHash].height, prevBlockHash, latestBlockHash, blockHeader.height);
+        uint32 latestBlockHeight = headers[latestBlockHash].height;
+        if (blockHeader.height <= latestBlockHeight) {
+            emit ChainReorg(latestBlockHeight, latestBlockHash, blockHeader.height, blockHash);
         }
+        latestBlockHash = blockHash;
 
         emit BlockHeaderSubmitted(blockHash, blockHeader.prevBlock, blockHeader.height);
     }
