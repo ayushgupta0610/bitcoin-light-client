@@ -8,7 +8,7 @@ library BitcoinUtils {
 
     struct BlockHeader {
         uint32 version; // 4 bytes
-        uint40 timestamp; // 5 bytes
+        uint32 timestamp; // 4 bytes
         uint32 difficultyBits; // 4 bytes
         uint32 nonce; // 4 bytes
         uint32 height; // 4 bytes
@@ -46,8 +46,8 @@ library BitcoinUtils {
         // Merkle root (32 bytes) - Reverse byte order
         header.merkleRoot = bytes32(reverseBytes(rawHeader[36:68]));
 
-        // Timestamp (4 bytes) - Convert from LE to BE and cast to uint40
-        header.timestamp = uint40(bytesToUint256(reverseBytes(rawHeader[68:72])));
+        // Timestamp (4 bytes) - Convert from LE to BE and cast to uint32
+        header.timestamp = uint32(bytesToUint256(reverseBytes(rawHeader[68:72])));
 
         // Difficulty bits (4 bytes) - Convert from LE to BE and cast to uint32
         header.difficultyBits = uint32(bytesToUint256(reverseBytes(rawHeader[72:76])));
@@ -171,7 +171,7 @@ library BitcoinUtils {
     /// @return The 80-byte Bitcoin block header
     function serializeBlockHeader(
         uint32 version,
-        uint40 blockTimestamp,
+        uint32 blockTimestamp,
         uint32 difficultyBits,
         uint32 nonce,
         bytes32 prevBlock,
@@ -198,7 +198,7 @@ library BitcoinUtils {
         }
 
         // Timestamp (4 bytes) - Convert to LE
-        // Note: Even though timestamp is uint40, Bitcoin only uses 4 bytes
+        // Note: Even though timestamp is uint32, Bitcoin only uses 4 bytes
         bytes memory timestampBytes = reverseBytes(abi.encodePacked(uint32(blockTimestamp)));
         for (uint256 i = 0; i < 4; i++) {
             rawHeader[i + 68] = timestampBytes[i];

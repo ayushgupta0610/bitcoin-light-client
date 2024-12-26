@@ -31,7 +31,7 @@ contract LightClient is AccessControl {
     uint32 private constant DIFFICULTY_ADJUSTMENT_INTERVAL = 2016;
 
     // Target block time in seconds
-    uint40 private constant TARGET_TIMESPAN = 14 * 24 * 60 * 60; // 2 weeks
+    uint32 private constant TARGET_TIMESPAN = 14 * 24 * 60 * 60; // 2 weeks
 
     // Genesis block header hash
     bytes32 public constant GENESIS_BLOCK = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f;
@@ -97,7 +97,7 @@ contract LightClient is AccessControl {
     function submitBlockHeader(
         bytes32 blockHash,
         uint32 version, // 4 bytes
-        uint40 blockTimestamp, // 5 bytes
+        uint32 blockTimestamp, // 4 bytes
         uint32 difficultyBits, // 4 bytes
         uint32 nonce, // 4 bytes
         bytes32 prevBlock, // 32 bytes
@@ -257,7 +257,7 @@ contract LightClient is AccessControl {
      */
     function getSeralizedBlockHeader(
         uint32 version, // 4 bytes
-        uint40 blockTimestamp, // 5 bytes
+        uint32 blockTimestamp, // 4 bytes
         uint32 difficultyBits, // 4 bytes
         uint32 nonce, // 4 bytes
         bytes32 prevBlock, // 32 bytes

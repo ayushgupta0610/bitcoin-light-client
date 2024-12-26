@@ -16,7 +16,7 @@ contract LightClientTest is Test {
     bytes constant BLOCK_1_HEADER =
         hex"010000006fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d61900000000003ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a29ab5f49ffff001d1dac2b7c";
     bytes32 constant BLOCK_1_HASH = 0x00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048;
-    uint40 private constant TARGET_TIMESPAN = 14 * 24 * 60 * 60; // 2 weeks
+    uint32 private constant TARGET_TIMESPAN = 14 * 24 * 60 * 60; // 2 weeks
 
     function setUp() public {
         blockSubmitter = makeAddr("blockSubmitter");
@@ -207,7 +207,7 @@ contract LightClientTest is Test {
     //     vm.startPrank(blockSubmitter);
 
     //     bytes32 prevHash = GENESIS_BLOCK;
-    //     uint40 startTime = 1231006505; // Genesis block timestamp
+    //     uint32 startTime = 1231006505; // Genesis block timestamp
     //     uint32 INITIAL_BITS = 0x1d00ffff;
 
     //     // Mock a valid block hash that satisfies PoW requirement
@@ -229,7 +229,7 @@ contract LightClientTest is Test {
 
     //     // Test Case 1: Exactly 2 weeks (no change in difficulty)
     //     {
-    //         uint40 exactTwoWeeks = startTime + (2017 * 600);
+    //         uint32 exactTwoWeeks = startTime + (2017 * 600);
     //         _submitTestBlock(
     //             VALID_POW_HASH,
     //             exactTwoWeeks,
@@ -241,7 +241,7 @@ contract LightClientTest is Test {
 
     //     // Test Case 2: Too fast (blocks mined in half the expected time)
     //     {
-    //         uint40 oneWeekLater = startTime + (TARGET_TIMESPAN / 2);
+    //         uint32 oneWeekLater = startTime + (TARGET_TIMESPAN / 2);
 
     //         vm.expectRevert(abi.encodeWithSignature("INVALID_DIFFICULTY_TARGET()"));
     //         _submitTestBlock(
@@ -255,7 +255,7 @@ contract LightClientTest is Test {
 
     //     // Test Case 3: Too slow
     //     {
-    //         uint40 fourWeeksLater = startTime + (TARGET_TIMESPAN * 2);
+    //         uint32 fourWeeksLater = startTime + (TARGET_TIMESPAN * 2);
 
     //         vm.expectRevert(abi.encodeWithSignature("INVALID_DIFFICULTY_TARGET()"));
     //         _submitTestBlock(
@@ -271,7 +271,7 @@ contract LightClientTest is Test {
     // }
 
     // Helper function to submit blocks quickly
-    function _submitTestBlock(bytes32 blockHash, uint40 timestamp, uint32 bits, bytes32 prevBlockHash, uint32 nonce)
+    function _submitTestBlock(bytes32 blockHash, uint32 timestamp, uint32 bits, bytes32 prevBlockHash, uint32 nonce)
         internal
     {
         lightClient.submitBlockHeader(
@@ -290,7 +290,7 @@ contract LightClientTest is Test {
         uint32 version,
         bytes32 prevBlock,
         bytes32 merkleRoot,
-        uint40 blockTimestamp,
+        uint32 blockTimestamp,
         uint32 difficultyBits,
         uint32 nonce
     ) internal pure returns (bytes memory) {
