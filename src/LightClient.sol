@@ -158,7 +158,7 @@ contract LightClient is AccessControl {
         bytes32[] memory currentLevel = new bytes32[](currentLevelLength);
 
         // Copy initial txids to currentLevel
-        for (uint256 i = 0; i < txids.length; i++) {
+        for (uint256 i = 0; i < currentLevelLength; i++) {
             currentLevel[i] = txids[i];
         }
 
@@ -186,10 +186,10 @@ contract LightClient is AccessControl {
         return currentLevel[0];
     }
 
-    /**
-     * @dev Verify difficulty target for adjustment blocks
-     * @param header New block header
-     */
+    // /**
+    //  * @dev Verify difficulty target for adjustment blocks
+    //  * @param header New block header
+    //  */
     // function verifyDifficultyTarget(BitcoinUtils.BlockHeader memory header) public view {
     //     // Only adjust difficulty every 2016 blocks
     //     if (header.height % 2016 != 0) {
@@ -230,6 +230,7 @@ contract LightClient is AccessControl {
     //     // Calculate new target
     //     uint256 oldTarget = BitcoinUtils.expandDifficultyBits(lastAdjustment.difficultyBits);
     //     uint256 newTarget = (oldTarget * actualTimespan) / TARGET_TIMESPAN;
+    //     uint256 currentTarget = BitcoinUtils.expandDifficultyBits(header.difficultyBits);
 
     //     // Never exceed the minimum difficulty (maximum target)
     //     uint256 maxTarget = BitcoinUtils.expandDifficultyBits(MINIMUM_DIFFICULTY_BITS);
@@ -237,9 +238,7 @@ contract LightClient is AccessControl {
     //         newTarget = maxTarget;
     //     }
 
-    //     // Convert new target to compact format and verify
-    //     uint32 newDifficultyBits = BitcoinUtils.compactDifficultyBits(uint32(newTarget));
-    //     require(header.difficultyBits == newDifficultyBits, "Invalid difficulty target");
+    //     require(currentTarget == newTarget, "Invalid difficulty target");
     // }
 
     /**

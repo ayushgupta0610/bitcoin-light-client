@@ -252,43 +252,4 @@ library BitcoinUtils {
         // Valid if hash is less than target
         return hashNum < target;
     }
-
-    /// @notice Convert expanded target to compact difficulty bits format
-    /// @param target The expanded 256-bit target value
-    /// @return uint32 The compressed difficulty bits in nBits format
-    function compactDifficultyBits(uint256 target) internal pure returns (uint32) {
-        // Handle zero target
-        if (target == 0) {
-            return 0;
-        }
-
-        // Convert target to mantissa and exponent
-        uint256 exponent = 0;
-        uint256 mantissa = target;
-
-        // Right shift until mantissa fits in 24 bits
-        while (mantissa > 0x00FFFFFF) {
-            mantissa >>= 8;
-            exponent++;
-        }
-
-        // Handle special case for zero exponent
-        if (exponent == 0) {
-            while (mantissa < 0x00800000) {
-                mantissa <<= 8;
-                exponent--;
-            }
-        }
-
-        // Add 3 to match Bitcoin's format where base is 256
-        exponent += 3;
-
-        // Combine exponent and mantissa into compact format
-        uint32 compact = uint32((exponent << 24) | (mantissa & 0x00FFFFFF));
-
-        // Verify our result matches the original target when expanded
-        assert(target == expandDifficultyBits(compact));
-
-        return compact;
-    }
 }

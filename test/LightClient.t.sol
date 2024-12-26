@@ -245,8 +245,8 @@ contract LightClientTest is Test {
             competingBlock2Hash,
             1,
             1231470173, // Later timestamp
-            0x1d00ffff,
-            0x1dac2b7c,
+            0x1d00ffff, // Difficulty
+            0x1dac2b7c, // nonce
             block1Hash, // Same parent as the original block 2
             0x0e3e2357e806b6cdb1f70b54c3a3a17b6714ee1f0e68bebb44a74b1efd512098
         );
@@ -270,7 +270,7 @@ contract LightClientTest is Test {
     //     bytes32 VALID_POW_HASH = 0x00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048;
 
     //     // (Important: https://bitcoin.stackexchange.com/questions/5838/how-is-difficulty-calculated)
-    //     for (uint32 i = 1; i < 2017; i++) {
+    //     for (uint32 i = 1; i < 2016; i++) {
     //         // Use the same valid PoW hash for all blocks - this is just for testing
     //         _submitTestBlock(
     //             VALID_POW_HASH,
@@ -284,7 +284,7 @@ contract LightClientTest is Test {
 
     //     // Test Case 1: Exactly 2 weeks (no change in difficulty)
     //     {
-    //         uint32 exactTwoWeeks = startTime + (2017 * 600);
+    //         uint32 exactTwoWeeks = startTime + (2016 * 600);
     //         _submitTestBlock(
     //             VALID_POW_HASH,
     //             exactTwoWeeks,
