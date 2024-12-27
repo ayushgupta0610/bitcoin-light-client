@@ -221,6 +221,20 @@ library BitcoinUtils {
     }
 
     /// @notice Expand compressed difficulty bits to full target
+    /// @param header BlockHeader struct
+    /// @return bytes32 Block hash
+    function getBlockHashFromStruct(BitcoinUtils.BlockHeader memory header) internal view returns (bytes32) {
+        // Serialise
+        bytes memory serialisedBlockHeader = serializeBlockHeader(
+            header.version, header.timestamp, header.difficultyBits, header.nonce, header.prevBlock, header.merkleRoot
+        );
+        // Double Hash
+        bytes32 reversedBlockHash = sha256DoubleHash(serialisedBlockHeader);
+        // Reverse
+        return reverseBytes32(reversedBlockHash);
+    }
+
+    /// @notice Expand compressed difficulty bits to full target
     /// @param bits Compressed difficulty target
     /// @return uint256 Expanded target
     function expandDifficultyBits(uint32 bits) internal pure returns (uint256) {

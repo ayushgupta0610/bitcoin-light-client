@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Test, console2} from "forge-std/Test.sol";
+import {Test, console} from "forge-std/Test.sol";
 import {LightClient} from "../src/LightClient.sol";
 import {BitcoinUtils} from "../src/BitcoinUtils.sol";
 
@@ -258,73 +258,6 @@ contract LightClientTest is Test {
         vm.stopPrank();
     }
 
-    // function test_DifficultyTargetAdjustment() public {
-    //     vm.startPrank(blockSubmitter);
-
-    //     bytes32 prevHash = GENESIS_BLOCK;
-    //     uint32 startTime = 1231006505; // Genesis block timestamp
-    //     uint32 INITIAL_BITS = 0x1d00ffff;
-
-    //     // Mock a valid block hash that satisfies PoW requirement
-    //     // This is a real Bitcoin block hash that satisfies the initial difficulty
-    //     bytes32 VALID_POW_HASH = 0x00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048;
-
-    //     // (Important: https://bitcoin.stackexchange.com/questions/5838/how-is-difficulty-calculated)
-    //     for (uint32 i = 1; i < 2016; i++) {
-    //         // Use the same valid PoW hash for all blocks - this is just for testing
-    //         _submitTestBlock(
-    //             VALID_POW_HASH,
-    //             startTime + (i * 600), // 10 minute intervals
-    //             INITIAL_BITS,
-    //             prevHash,
-    //             1
-    //         );
-    //         prevHash = VALID_POW_HASH;
-    //     }
-
-    //     // Test Case 1: Exactly 2 weeks (no change in difficulty)
-    //     {
-    //         uint32 exactTwoWeeks = startTime + (2016 * 600);
-    //         _submitTestBlock(
-    //             VALID_POW_HASH,
-    //             exactTwoWeeks,
-    //             INITIAL_BITS, // Should remain the same
-    //             prevHash,
-    //             1
-    //         );
-    //     }
-
-    //     // Test Case 2: Too fast (blocks mined in half the expected time)
-    //     {
-    //         uint32 oneWeekLater = startTime + (TARGET_TIMESPAN / 2);
-
-    //         vm.expectRevert(abi.encodeWithSignature("INVALID_DIFFICULTY_TARGET()"));
-    //         _submitTestBlock(
-    //             VALID_POW_HASH,
-    //             oneWeekLater,
-    //             INITIAL_BITS, // Should fail as difficulty needs to increase
-    //             prevHash,
-    //             1
-    //         );
-    //     }
-
-    //     // Test Case 3: Too slow
-    //     {
-    //         uint32 fourWeeksLater = startTime + (TARGET_TIMESPAN * 2);
-
-    //         vm.expectRevert(abi.encodeWithSignature("INVALID_DIFFICULTY_TARGET()"));
-    //         _submitTestBlock(
-    //             VALID_POW_HASH,
-    //             fourWeeksLater,
-    //             INITIAL_BITS, // Should fail as difficulty needs to decrease
-    //             prevHash,
-    //             1
-    //         );
-    //     }
-
-    //     vm.stopPrank();
-    // }
-
     // Helper function to submit blocks quickly
     function _submitTestBlock(bytes32 blockHash, uint32 timestamp, uint32 bits, bytes32 prevBlockHash, uint32 nonce)
         internal
@@ -363,7 +296,7 @@ contract LightClientTest is Test {
         return header;
     }
 
-    function test_VerifyTxInclusion() public {
+    function test_VerifyTxInclusion() public view {
         // Using real Bitcoin block #100000 data
         // https://btcscan.org/block/000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506
         bytes32[] memory txids = new bytes32[](4);
@@ -394,5 +327,71 @@ contract LightClientTest is Test {
             bool isIncluded = lightClient.verifyTxInclusion(wrongTxId, merkleRoot, proof, index);
             assertFalse(isIncluded, "Transaction should not be included in the merkle tree");
         }
+    }
+
+    function testGasVerifyBlockContinuity() public view {
+        // Create sample block headers
+        bytes[] memory rawHeaders = new bytes[](5); // Test with 5 blocks first
+        bytes32 currentHash = GENESIS_BLOCK;
+
+        for (uint256 i = 0; i < rawHeaders.length; i++) {
+            // Create a valid block header that connects to previous hash
+            bytes memory header = _createMockBlockHeader(currentHash);
+            rawHeaders[i] = header;
+            currentHash = lightClient.getBlockHash(header);
+        }
+
+        // Measure gas for verification
+        uint256 startGas = gasleft();
+        lightClient.verifyBlockContinuity(rawHeaders, currentHash);
+        uint256 gasUsed = startGas - gasleft();
+
+        console.log("Gas used for %d blocks: %d", rawHeaders.length, gasUsed);
+    }
+
+    function testMaxBlocksVerification() public view {
+        // Test with increasing number of blocks until we hit gas limit
+        uint256[] memory blockCounts = new uint256[](6);
+        blockCounts[0] = 10;
+        blockCounts[1] = 50;
+        blockCounts[2] = 100;
+        blockCounts[3] = 200;
+        blockCounts[4] = 500;
+        blockCounts[5] = 1000;
+
+        for (uint256 i = 0; i < blockCounts.length; i++) {
+            uint256 blockCount = blockCounts[i];
+            bytes[] memory rawHeaders = new bytes[](blockCount);
+            bytes32 currentHash = GENESIS_BLOCK;
+
+            // Create chain of blocks
+            for (uint256 j = 0; j < blockCount; j++) {
+                bytes memory header = _createMockBlockHeader(currentHash);
+                rawHeaders[j] = header;
+                currentHash = lightClient.getBlockHash(header);
+            }
+
+            // Measure gas
+            uint256 startGas = gasleft();
+            try lightClient.verifyBlockContinuity(rawHeaders, currentHash) {
+                uint256 gasUsed = startGas - gasleft();
+                console.log("Gas used for %d blocks: %d", blockCount, gasUsed);
+                console.log("Gas per block: %d", gasUsed / blockCount);
+            } catch {
+                console.log("Failed at %d blocks - exceeded gas limit", blockCount);
+                break;
+            }
+        }
+    }
+
+    function _createMockBlockHeader(bytes32 prevBlockHash) internal view returns (bytes memory) {
+        // Create a minimal valid header
+        uint32 version = 1;
+        uint32 timestamp = uint32(block.timestamp);
+        uint32 bits = 0x1d00ffff;
+        uint32 nonce = 0;
+        bytes32 merkleRoot = bytes32(0);
+
+        return BitcoinUtils.serializeBlockHeader(version, timestamp, bits, nonce, prevBlockHash, merkleRoot);
     }
 }

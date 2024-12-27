@@ -127,11 +127,6 @@ contract LightClient is AccessControl {
         // Set block height
         blockHeader.height = headers[blockHeader.prevBlock].height + 1;
 
-        // Verify difficulty target if this is an adjustment block (This spikes up the gas to in case of blockNo%2016==0)
-        // if (blockHeader.height % DIFFICULTY_ADJUSTMENT_INTERVAL == 0) {
-        //     verifyDifficultyTarget(blockHeader);
-        // }
-
         // Store the header
         headers[blockHash] = blockHeader;
 
@@ -186,61 +181,6 @@ contract LightClient is AccessControl {
 
         return currentLevel[0];
     }
-
-    // /**
-    //  * @dev Verify difficulty target for adjustment blocks
-    //  * @param header New block header
-    //  */
-    // function verifyDifficultyTarget(BitcoinUtils.BlockHeader memory header) public view {
-    //     // Only adjust difficulty every 2016 blocks
-    //     if (header.height % 2016 != 0) {
-    //         require(
-    //             header.difficultyBits == headers[header.prevBlock].difficultyBits,
-    //             "Difficulty can only change on adjustment blocks"
-    //         );
-    //         return;
-    //     }
-
-    //     // Calculate the height of the last adjustment block
-    //     // For block 2016, we need block 0
-    //     // For block 4032, we need block 2016
-    //     uint256 lastAdjustmentHeight = (header.height / 2016 - 1) * 2016;
-
-    //     // Get the last adjustment block by traversing back to that height
-    //     bytes32 cursor = header.prevBlock;
-    //     BitcoinUtils.BlockHeader memory currentBlock;
-
-    //     do {
-    //         currentBlock = headers[cursor];
-    //         cursor = currentBlock.prevBlock;
-    //     } while (currentBlock.height > lastAdjustmentHeight);
-
-    //     BitcoinUtils.BlockHeader memory lastAdjustment = headers[cursor];
-
-    //     // Calculate actual timespan between last adjustment and current block
-    //     uint256 actualTimespan = header.timestamp - lastAdjustment.timestamp;
-
-    //     // Bound the adjustment factor
-    //     if (actualTimespan < TARGET_TIMESPAN / 4) {
-    //         actualTimespan = TARGET_TIMESPAN / 4;
-    //     }
-    //     if (actualTimespan > TARGET_TIMESPAN * 4) {
-    //         actualTimespan = TARGET_TIMESPAN * 4;
-    //     }
-
-    //     // Calculate new target
-    //     uint256 oldTarget = BitcoinUtils.expandDifficultyBits(lastAdjustment.difficultyBits);
-    //     uint256 newTarget = (oldTarget * actualTimespan) / TARGET_TIMESPAN;
-    //     uint256 currentTarget = BitcoinUtils.expandDifficultyBits(header.difficultyBits);
-
-    //     // Never exceed the minimum difficulty (maximum target)
-    //     uint256 maxTarget = BitcoinUtils.expandDifficultyBits(MINIMUM_DIFFICULTY_BITS);
-    //     if (newTarget > maxTarget) {
-    //         newTarget = maxTarget;
-    //     }
-
-    //     require(currentTarget == newTarget, "Invalid difficulty target");
-    // }
 
     /**
      * @dev Calculate serialized block header from BlockHeader struct
@@ -346,5 +286,38 @@ contract LightClient is AccessControl {
      */
     function getReversedBytes32(bytes32 bytes32Value) external pure returns (bytes32) {
         return BitcoinUtils.reverseBytes32(bytes32Value);
+    }
+
+    /**
+     * @dev Verifies a chain of Bitcoin block headers
+     * @param rawHeaders Raw block headers (must be 80 bytes each)
+     * @param targetBlockHash Expected hash of the final block
+     * @return bool True if the chain is valid
+     */
+    function verifyBlockContinuity(bytes[] calldata rawHeaders, bytes32 targetBlockHash) public view returns (bool) {
+        require(rawHeaders.length > 0, "Must provide at least one header");
+
+        bytes32 currentHash = latestBlockHash;
+
+        for (uint256 i = 0; i < rawHeaders.length; i++) {
+            require(rawHeaders[i].length == 80, "Invalid header length");
+
+            // Parse the header
+            BitcoinUtils.BlockHeader memory header = BitcoinUtils.parseBlockHeader(rawHeaders[i]);
+
+            // Verify previous block hash matches
+            require(header.prevBlock == currentHash, "Invalid hash chain");
+
+            // Calculate this block's hash
+            bytes32 blockHash = getBlockHash(rawHeaders[i]);
+
+            // Verify proof of work
+            // require(BitcoinUtils.verifyProofOfWork(blockHash, header.difficultyBits), "Invalid proof of work");
+
+            currentHash = blockHash;
+        }
+
+        // Verify we reached our target block
+        return currentHash == targetBlockHash;
     }
 }

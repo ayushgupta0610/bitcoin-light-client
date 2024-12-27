@@ -69,5 +69,5 @@ async function getBlockHeaderData(blockHash) {
 
 // Example usage with the block hash from your example
 const blockHash =
-  "00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048";
+  "00000000a30d73bbfe167ace49a48042099ea64bab675611e29545a7abe06dee";
 getBlockHeaderData(blockHash);
