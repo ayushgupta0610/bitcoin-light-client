@@ -5,6 +5,7 @@ library BitcoinUtils {
     error SHA256_FAILED();
     error EXPONENT_TOO_LARGE();
     error INVALID_LENGTH();
+    error INVALID_HEX_CHARACTER();
 
     struct BlockHeader {
         uint32 version; // 4 bytes
@@ -150,7 +151,7 @@ library BitcoinUtils {
         if (bytes1("A") <= c && c <= bytes1("F")) {
             return 10 + uint8(c) - uint8(bytes1("A"));
         }
-        revert("Invalid hex character");
+        revert INVALID_HEX_CHARACTER();
     }
 
     /// @notice Generate a sha256 double hash for a pair of bytes32 values
@@ -219,11 +220,9 @@ library BitcoinUtils {
         return rawHeader;
     }
 
-    /**
-     * @dev Expand compressed difficulty bits to full target
-     * @param bits Compressed difficulty target
-     * @return uint256 Expanded target
-     */
+    /// @notice Expand compressed difficulty bits to full target
+    /// @param bits Compressed difficulty target
+    /// @return uint256 Expanded target
     function expandDifficultyBits(uint32 bits) internal pure returns (uint256) {
         uint32 exp = bits >> 24;
         uint32 coef = bits & 0x00ffffff;
@@ -236,12 +235,10 @@ library BitcoinUtils {
         return coef * (2 ** (8 * (exp - 3)));
     }
 
-    /**
-     * @dev Verify the proof of work meets difficulty target
-     * @param blockHash Calculated block hash
-     * @param difficultyBits Compressed difficulty target
-     * @return bool True if proof of work is valid
-     */
+    /// @notice Verify the proof of work meets difficulty target
+    /// @param blockHash Calculated block hash
+    /// @param difficultyBits Compressed difficulty target
+    /// @return bool True if proof of work is valid
     function verifyProofOfWork(bytes32 blockHash, uint32 difficultyBits) internal pure returns (bool) {
         // Extract difficulty target from compressed bits
         uint256 target = expandDifficultyBits(difficultyBits);
@@ -251,5 +248,99 @@ library BitcoinUtils {
 
         // Valid if hash is less than target
         return hashNum < target;
+    }
+
+    /// @notice Verify if a transaction is included in a block using a Merkle proof
+    /// @dev All inputs should be in Bitcoin's display format (natural byte order)
+    /// @param txId Transaction ID to verify in natural byte order
+    /// @param merkleRoot Expected Merkle root in natural byte order
+    /// @param proof Array of proof hashes in natural byte order
+    /// @param index Index of the transaction in the block (0-based)
+    /// @return bool True if the proof is valid
+    function verifyTxInclusion(bytes32 txId, bytes32 merkleRoot, bytes32[] memory proof, uint256 index)
+        internal
+        view
+        returns (bool)
+    {
+        // Keep current hash in Bitcoin's internal byte order (not reversed)
+        bytes32 currentHash = txId;
+
+        // For each level of the proof
+        for (uint256 i = 0; i < proof.length; i++) {
+            bytes32 proofElement = proof[i];
+
+            // If the current position (index) is even, the proof element goes on the right
+            // If it's odd, it goes on the left
+            if (index % 2 == 0) {
+                // Current hash should go on the left
+                currentHash = hashPair(currentHash, proofElement);
+            } else {
+                // Current hash should go on the right
+                currentHash = hashPair(proofElement, currentHash);
+            }
+
+            // Move up to the parent level
+            index = index / 2;
+        }
+
+        // Compare with the expected merkle root
+        return currentHash == merkleRoot;
+    }
+
+    /// @notice Generate merkle proof for a transaction in natural byte order
+    /// @dev Index is provided as uint but represents binary path in the tree
+    ///      The maximum value of the index is checked against array length
+    /// @param txIndex Index of the transaction in the block (0-based)
+    /// @param txHashes Array of transaction hashes in tree order in natural byte order
+    /// @return proof Array of proof hashes in natural byte order
+    /// @return index Position of the transaction in the block
+    function generateMerkleProof(uint256 txIndex, bytes32[] memory txHashes)
+        internal
+        view
+        returns (bytes32[] memory proof, uint256 index)
+    {
+        uint256 numLeaves = txHashes.length;
+        uint256 proofLength = calculateProofLength(numLeaves);
+        proof = new bytes32[](proofLength);
+
+        // Start with the leaf level
+        bytes32[] memory currentLevel = txHashes;
+        index = txIndex; // Store original index for return
+        uint256 currentIndex = txIndex;
+        uint256 proofIndex = 0;
+
+        while (currentLevel.length > 1) {
+            bytes32[] memory nextLevel = new bytes32[]((currentLevel.length + 1) / 2);
+
+            for (uint256 i = 0; i < currentLevel.length; i += 2) {
+                if (i == currentLevel.length - 1) {
+                    // Handle odd number of elements
+                    nextLevel[i / 2] = currentLevel[i];
+                    continue;
+                }
+
+                // If this is our path, store the sibling in the proof
+                if (i == currentIndex || i + 1 == currentIndex) {
+                    proof[proofIndex++] = currentLevel[i + (currentIndex % 2 == 0 ? 1 : 0)];
+                }
+
+                // Calculate parent hash
+                nextLevel[i / 2] = hashPair(currentLevel[i], currentLevel[i + 1]);
+            }
+
+            // Move to next level
+            currentLevel = nextLevel;
+            currentIndex /= 2;
+        }
+
+        return (proof, index);
+    }
+
+    ///  @notice Calculate the length of the Merkle proof based on number of leaves
+    ///  @param numLeaves Number of leaf nodes
+    ///  @return uint256 Length of the proof array
+    function calculateProofLength(uint256 numLeaves) internal pure returns (uint256) {
+        if (numLeaves <= 1) return 0;
+        return 1 + calculateProofLength((numLeaves + 1) / 2);
     }
 }

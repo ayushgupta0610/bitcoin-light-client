@@ -17,6 +17,7 @@ contract LightClient is AccessControl {
     error INVALID_PROOF_OF_WORK();
     error INVALID_DIFFICULTY_TARGET();
     error INVALID_INPUT();
+    error INVALID_TRANSACTION_INDEX();
 
     // Block submitter role
     bytes32 private constant BLOCK_SUBMIT_ROLE = keccak256("BLOCK_SUBMIT_ROLE");
@@ -281,7 +282,7 @@ contract LightClient is AccessControl {
      * @param txids bytes32 txn ids
      * @return bytes32 merkle root
      */
-    function calculateMerkleRoot(bytes32[] memory txids) external view returns (bytes32) {
+    function calculateMerkleRoot(bytes32[] calldata txids) external view returns (bytes32) {
         bytes32[] memory txIdsInNaturalBytesOrder = BitcoinUtils.reverseBytes32Array(txids);
         // First get the double SHA256 hash
         bytes32 hash = _calculateMerkleRootInNaturalByteOrder(txIdsInNaturalBytesOrder);
@@ -297,5 +298,53 @@ contract LightClient is AccessControl {
      */
     function getBlockHeader(bytes32 blockHash) external view returns (BitcoinUtils.BlockHeader memory) {
         return headers[blockHash];
+    }
+
+    /**
+     * @notice Verify if a transaction is included in a block using a Merkle proof
+     * @dev All inputs should be in Bitcoin's display format (reversed byte order)
+     * @param txId Transaction ID to verify (in Bitcoin's reversed byte order)
+     * @param merkleRoot Expected Merkle root (in Bitcoin's reversed byte order)
+     * @param proof Array of proof hashes in natural byte order (please NOTE this)
+     * @param index Index of the transaction in the block (0-based)
+     * @return bool True if the proof is valid
+     */
+    function verifyTxInclusion(bytes32 txId, bytes32 merkleRoot, bytes32[] calldata proof, uint256 index)
+        external
+        view
+        returns (bool)
+    {
+        bytes32 naturalBytesTxId = BitcoinUtils.reverseBytes32(txId);
+        bytes32 naturalBytesMerkleRoot = BitcoinUtils.reverseBytes32(merkleRoot);
+        // bytes32[] memory proofsInNaturalByteOrder = BitcoinUtils.reverseBytes32Array(proof);
+        return BitcoinUtils.verifyTxInclusion(naturalBytesTxId, naturalBytesMerkleRoot, proof, index);
+    }
+
+    /**
+     * @notice Generate merkle proof for a transaction in natural byte order
+     * @dev Index is provided as uint but represents binary path in the tree
+     *      The maximum value of the index is checked against array length
+     * @param txIndex Index of the transaction in the block (0-based)
+     * @param transactions Array of transaction hashes in tree order in reverse byte order
+     * @return proof Array of proof hashes in natural byte order
+     * @return index Position of the transaction in the block
+     */
+    function generateMerkleProof(uint256 txIndex, bytes32[] calldata transactions)
+        external
+        view
+        returns (bytes32[] memory proof, uint256 index)
+    {
+        require(txIndex < transactions.length, INVALID_TRANSACTION_INDEX());
+        bytes32[] memory txnsInNaturalByteOrder = BitcoinUtils.reverseBytes32Array(transactions);
+        return BitcoinUtils.generateMerkleProof(txIndex, txnsInNaturalByteOrder);
+    }
+
+    /**
+     * @notice Get reversed bytes32 value
+     * @param bytes32Value bytes32 value to reverse
+     * @return bytes32 reversed bytes32 value
+     */
+    function getReversedBytes32(bytes32 bytes32Value) external pure returns (bytes32) {
+        return BitcoinUtils.reverseBytes32(bytes32Value);
     }
 }

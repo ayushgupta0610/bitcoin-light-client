@@ -362,4 +362,37 @@ contract LightClientTest is Test {
 
         return header;
     }
+
+    function test_VerifyTxInclusion() public {
+        // Using real Bitcoin block #100000 data
+        // https://btcscan.org/block/000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506
+        bytes32[] memory txids = new bytes32[](4);
+        txids[0] = 0x8c14f0db3df150123e6f3dbbf30f8b955a8249b62ac1d1ff16284aefa3d06d87;
+        txids[1] = 0xfff2525b8931402dd09222c50775608f75787bd2b87e56995a7bdd30f79702c4;
+        txids[2] = 0x6359f0868171b1d194cbee1af2f16ea598ae8fad666d9b012c8ed2b79a236ec4;
+        txids[3] = 0xe9a66845e05d5abc0ad04ec80f774a7e585c6e8db975962d069a522137b80c1d;
+
+        bytes32 merkleRoot = 0xf3e94742aca4b5ef85488dc37c06c3282295ffec960994b2c0d5ac2a25a95766;
+
+        // Test Case 1: Valid inclusion for first transaction
+        {
+            // Generate proof for the first transaction (index 0)
+            (bytes32[] memory proof, uint256 index) = lightClient.generateMerkleProof(1, txids);
+
+            // Verify the transaction is included
+            bool isIncluded = lightClient.verifyTxInclusion(txids[1], merkleRoot, proof, index);
+            assertTrue(isIncluded, "Transaction should be included in the merkle tree");
+        }
+
+        // Test Case 2: Invalid inclusion (wrong transaction ID)
+        {
+            // Generate proof for the first transaction (index 0)
+            (bytes32[] memory proof, uint256 index) = lightClient.generateMerkleProof(0, txids);
+
+            // Try to verify with a different transaction ID
+            bytes32 wrongTxId = 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef;
+            bool isIncluded = lightClient.verifyTxInclusion(wrongTxId, merkleRoot, proof, index);
+            assertFalse(isIncluded, "Transaction should not be included in the merkle tree");
+        }
+    }
 }
