@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {console} from "forge-std/console.sol";
 import {BitcoinUtils} from "../BitcoinUtils.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
@@ -51,17 +52,17 @@ contract OptimizedLightClient is AccessControl {
         returns (bool)
     {
         if (rawHeader.length != HEADER_LENGTH) revert INVALID_HEADER_LENGTH();
-        bytes32 newBlockHash = getBlockHash(rawHeader);
+        bytes32 blockHash = getBlockHash(rawHeader);
         BitcoinUtils.BlockHeader memory header = BitcoinUtils.parseBlockHeader(rawHeader);
 
         // Verify POW for new header
-        if (!BitcoinUtils.verifyProofOfWork(newBlockHash, header.difficultyBits)) {
+        if (!BitcoinUtils.verifyProofOfWork(blockHash, header.difficultyBits)) {
             revert INVALID_PROOF_OF_WORK();
         }
 
         // If there are intermediate headers, verify the chain
         if (intermediateHeaders.length > 0) {
-            bool isValid = _verifyHeaderChain(header.prevBlock, intermediateHeaders, latestCheckpointHeaderHash);
+            bool isValid = _verifyHeaderChain(header.prevBlock, intermediateHeaders);
             if (!isValid) revert INVALID_HEADER_CHAIN();
         } else {
             // If no intermediate headers, verify direct connection to checkpoint
@@ -71,13 +72,10 @@ contract OptimizedLightClient is AccessControl {
         // Update the checkpoint
         uint32 latestHeaderHeight = headers[latestCheckpointHeaderHash].height;
         header.height = latestHeaderHeight + uint32(intermediateHeaders.length) + 1;
-        latestCheckpointHeaderHash = newBlockHash;
+        latestCheckpointHeaderHash = blockHash;
+        headers[latestCheckpointHeaderHash] = header;
 
-        if (latestHeaderHeight < header.height) {
-            headers[latestCheckpointHeaderHash] = header;
-        }
-
-        emit BlockHeaderSubmitted(newBlockHash, header.prevBlock, header.height);
+        emit BlockHeaderSubmitted(blockHash, header.prevBlock, header.height);
         return true;
     }
 
@@ -85,10 +83,9 @@ contract OptimizedLightClient is AccessControl {
      * @notice Verify a chain of headers connects properly from latest checkpoint to new block
      * @param currentPrevHash Previous hash of the current header
      * @param intermediateHeaders Array of intermediate headers
-     * @param checkpointHash Hash of the checkpoint block
      * @return bool True if chain is valid
      */
-    function _verifyHeaderChain(bytes32 currentPrevHash, bytes[] calldata intermediateHeaders, bytes32 checkpointHash)
+    function _verifyHeaderChain(bytes32 currentPrevHash, bytes[] calldata intermediateHeaders)
         private
         view
         returns (bool)
@@ -117,7 +114,9 @@ contract OptimizedLightClient is AccessControl {
         }
 
         // Final verification - connect to checkpoint
-        return currentPrevHash == checkpointHash;
+        console.logBytes32(currentPrevHash);
+        console.logBytes32(latestCheckpointHeaderHash);
+        return currentPrevHash == latestCheckpointHeaderHash; // Evaluate till how many blocks does this not return OOG error
     }
 
     /**

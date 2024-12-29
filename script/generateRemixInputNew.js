@@ -1,4 +1,5 @@
 const axios = require("axios");
+const fs = require("fs");
 
 // Function to convert hex string to bytes32 format
 function toBytes32(hexString) {
@@ -103,7 +104,66 @@ async function getBlockHeaderData(blockHash) {
   }
 }
 
-// Example usage with the block hash from your example
-const blockHash =
-  "0000000097be56d606cdd9c54b04d4747e957d3608abe69198c661f2add73073";
-getBlockHeaderData(blockHash);
+async function processBlockHeadersJson(jsonPath) {
+  try {
+    // Read and parse JSON file
+    const data = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
+
+    // Process each block header
+    const formattedHeaders = data.map((block) => {
+      // Generate raw block header components
+      const versionHex = toLeBytes(block.version);
+      const prevBlockHex = reverseBytes(block.previousBlock);
+      const merkleRootHex = reverseBytes(block.merkleRoot);
+      const timestampHex = toLeBytes(block.timestamp);
+      const bitsHex = toLeBytes(block.bits);
+      const nonceHex = toLeBytes(block.nonce);
+
+      // Concatenate all parts
+      const rawBlockHeader =
+        versionHex +
+        prevBlockHex +
+        merkleRootHex +
+        timestampHex +
+        bitsHex +
+        nonceHex;
+
+      return {
+        height: block.height,
+        formattedData: {
+          blockHash: toBytes32(block.hash),
+          version: block.version,
+          prevBlock: toBytes32(block.previousBlock),
+          merkleRoot: toBytes32(block.merkleRoot),
+          blockTimestamp: block.timestamp,
+          difficultyBits: block.bits,
+          nonce: block.nonce,
+          rawBlockHeader: "0x" + rawBlockHeader,
+        },
+      };
+    });
+
+    // Output results
+    formattedHeaders.forEach(({ height, formattedData }) => {
+      console.log(`\nBlock ${height}:`);
+      console.log("------------------------");
+      console.log("Values for Remix:");
+      console.log("blockHash:", formattedData.blockHash);
+      console.log("version:", formattedData.version);
+      console.log("prevBlock:", formattedData.prevBlock);
+      console.log("merkleRoot:", formattedData.merkleRoot);
+      console.log("blockTimestamp:", formattedData.blockTimestamp);
+      console.log("difficultyBits:", formattedData.difficultyBits);
+      console.log("nonce:", formattedData.nonce);
+      console.log("rawBlockHeader:", formattedData.rawBlockHeader);
+    });
+
+    return formattedHeaders;
+  } catch (error) {
+    console.error("Error processing block headers:", error);
+    throw error;
+  }
+}
+
+// Execute with the JSON file path
+processBlockHeadersJson("./block_headers_2024-12-29T19-42-07-176Z.json");
