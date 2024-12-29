@@ -63,6 +63,7 @@ contract OptimizedLightClient is AccessControl {
         // If there are intermediate headers, verify the chain
         if (intermediateHeaders.length > 0) {
             bool isValid = _verifyHeaderChain(header.prevBlock, intermediateHeaders);
+            console.log("Is valid:", isValid);
             if (!isValid) revert INVALID_HEADER_CHAIN();
         } else {
             // If no intermediate headers, verify direct connection to checkpoint

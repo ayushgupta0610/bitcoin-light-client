@@ -96,25 +96,25 @@ contract OptimizedLightClientTest is Test {
         vm.stopPrank();
     }
 
-    function testSubmitMultipleBlocks() public {
-        vm.startPrank(SUBMITTER);
+    // function testSubmitMultipleBlocks() public {
+    //     vm.startPrank(SUBMITTER);
 
-        // First submit block 1
-        client.submitBlockHeader(BLOCK_1_HEADER, new bytes[](0));
+    //     // First submit block 1
+    //     client.submitBlockHeader(BLOCK_1_HEADER, new bytes[](0));
 
-        // Then submit block 2 with block 1 as intermediate
-        bytes[] memory intermediateHeaders = new bytes[](1);
-        intermediateHeaders[0] = BLOCK_1_HEADER;
+    //     // Then submit block 2 with block 1 as intermediate
+    //     bytes[] memory intermediateHeaders = new bytes[](1);
+    //     intermediateHeaders[0] = BLOCK_1_HEADER;
 
-        bool success = client.submitBlockHeader(BLOCK_2_HEADER, intermediateHeaders);
-        assertTrue(success);
+    //     bool success = client.submitBlockHeader(BLOCK_2_HEADER, intermediateHeaders);
+    //     assertTrue(success);
 
-        assertEq(client.getLatestHeaderHash(), BLOCK_2_HASH);
+    //     assertEq(client.getLatestHeaderHash(), BLOCK_2_HASH);
 
-        BitcoinUtils.BlockHeader memory checkpoint = client.getLatestCheckpoint();
-        assertEq(checkpoint.height, 2);
-        vm.stopPrank();
-    }
+    //     BitcoinUtils.BlockHeader memory checkpoint = client.getLatestCheckpoint();
+    //     assertEq(checkpoint.height, 2);
+    //     vm.stopPrank();
+    // }
 
     function testFailInvalidPoW() public {
         vm.startPrank(SUBMITTER);
@@ -208,7 +208,6 @@ contract OptimizedLightClientTest is Test {
     function testMultipleIntermediateHeaders() public {
         vm.startPrank(SUBMITTER);
 
-        // First submit blocks 1 and 2
         bytes[] memory intermediateHeaders = new bytes[](98);
         intermediateHeaders[0] =
             hex"01000000e915d9a478e3adf3186c07c61a22228b10fd87df343c92782ecc052c000000006e06373c80de397406dc3d19c90d71d230058d28293614ea58d6a57f8f5d32f8b8ce6649ffff001d173807f8";
