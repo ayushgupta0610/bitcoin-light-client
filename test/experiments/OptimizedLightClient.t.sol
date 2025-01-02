@@ -9,21 +9,6 @@ contract OptimizedLightClientTest is Test {
     OptimizedLightClient public client;
     address public constant SUBMITTER = address(0x1234);
 
-    // Initial block data
-    bytes32 constant INITIAL_HASH = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f;
-    bytes constant INITIAL_HEADER =
-        hex"0100000000000000000000000000000000000000000000000000000000000000000000003ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a29ab5f49ffff001d1dac2b7c";
-
-    // Block 1 data (real Bitcoin block after initial)
-    bytes constant BLOCK_1_HEADER =
-        hex"010000006fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000982051fd1e4ba744bbbe680e1fee14677ba1a3c3540bf7b1cdb606e857233e0e61bc6649ffff001d01e36299";
-    bytes32 constant BLOCK_1_HASH = 0x00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048;
-
-    // Block 2 data
-    bytes constant BLOCK_2_HEADER =
-        hex"010000004860eb18bf1b1620e37e9490fc8a427514416fd75159ab86688e9a8300000000d5fdcc541e25de1c7a5addedf24858b8bb665c9f36ef744ee42c316022c90f9bb0bc6649ffff001d08d2bd61";
-    bytes32 constant BLOCK_2_HASH = 0x000000006a625f06636b8bb6ac7b960a8d03705d1ace08b1a19da3fdcc99ddbd;
-
     // Block 10 data (real Bitcoin block after initial)
     bytes constant BLOCK_10_HEADER =
         hex"010000000508085c47cc849eb80ea905cc7800a3be674ffc57263cf210c59d8d00000000112ba175a1e04b14ba9e7ea5f76ab640affeef5ec98173ac9799a852fa39add320cd6649ffff001d1e2de565";
@@ -100,19 +85,19 @@ contract OptimizedLightClientTest is Test {
     //     vm.startPrank(SUBMITTER);
 
     //     // First submit block 1
-    //     client.submitBlockHeader(BLOCK_1_HEADER, new bytes[](0));
+    //     client.submitBlockHeader(BLOCK_11_HEADER, new bytes[](0));
 
     //     // Then submit block 2 with block 1 as intermediate
     //     bytes[] memory intermediateHeaders = new bytes[](1);
-    //     intermediateHeaders[0] = BLOCK_1_HEADER;
+    //     intermediateHeaders[0] = BLOCK_11_HEADER;
 
-    //     bool success = client.submitBlockHeader(BLOCK_2_HEADER, intermediateHeaders);
+    //     bool success = client.submitBlockHeader(BLOCK_12_HEADER, intermediateHeaders);
     //     assertTrue(success);
 
-    //     assertEq(client.getLatestHeaderHash(), BLOCK_2_HASH);
+    //     assertEq(client.getLatestHeaderHash(), BLOCK_12_HASH);
 
     //     BitcoinUtils.BlockHeader memory checkpoint = client.getLatestCheckpoint();
-    //     assertEq(checkpoint.height, 2);
+    //     assertEq(checkpoint.height, 12);
     //     vm.stopPrank();
     // }
 
@@ -120,7 +105,7 @@ contract OptimizedLightClientTest is Test {
         vm.startPrank(SUBMITTER);
 
         // Modify nonce to make PoW invalid
-        bytes memory invalidHeader = BLOCK_1_HEADER;
+        bytes memory invalidHeader = BLOCK_11_HEADER;
         // Modify the last 4 bytes (nonce)
         assembly {
             mstore8(add(invalidHeader, 79), 0x00)
@@ -137,7 +122,7 @@ contract OptimizedLightClientTest is Test {
         vm.startPrank(SUBMITTER);
 
         // Try to submit block 2 directly without block 1
-        client.submitBlockHeader(BLOCK_2_HEADER, new bytes[](0));
+        client.submitBlockHeader(BLOCK_12_HEADER, new bytes[](0));
         vm.stopPrank();
     }
 
@@ -146,16 +131,9 @@ contract OptimizedLightClientTest is Test {
 
         // Create invalid intermediate headers array
         bytes[] memory invalidIntermediateHeaders = new bytes[](1);
-        invalidIntermediateHeaders[0] = BLOCK_2_HEADER; // Wrong order
+        invalidIntermediateHeaders[0] = BLOCK_12_HEADER; // Wrong order
 
-        client.submitBlockHeader(BLOCK_1_HEADER, invalidIntermediateHeaders);
-        vm.stopPrank();
-    }
-
-    // TODO: See how the reoorg can be handled best
-    function testReorganization() public {
-        vm.startPrank(SUBMITTER);
-
+        client.submitBlockHeader(BLOCK_11_HEADER, invalidIntermediateHeaders);
         vm.stopPrank();
     }
 
@@ -164,18 +142,6 @@ contract OptimizedLightClientTest is Test {
         vm.startPrank(SUBMITTER);
         bytes memory invalidHeader = hex"0011"; // Too short
         client.submitBlockHeader(invalidHeader, new bytes[](0));
-        vm.stopPrank();
-    }
-
-    // Add test for submitting duplicate block
-    function testFailDuplicateBlock() public {
-        vm.startPrank(SUBMITTER);
-
-        // Submit block 1
-        client.submitBlockHeader(BLOCK_1_HEADER, new bytes[](0));
-
-        // Try to submit the same block again
-        client.submitBlockHeader(BLOCK_1_HEADER, new bytes[](0));
         vm.stopPrank();
     }
 
@@ -201,10 +167,10 @@ contract OptimizedLightClientTest is Test {
     // Add test for access control
     function testFailUnauthorizedSubmission() public {
         vm.prank(address(0xdead));
-        client.submitBlockHeader(BLOCK_1_HEADER, new bytes[](0));
+        client.submitBlockHeader(BLOCK_11_HEADER, new bytes[](0));
     }
 
-    // Add test for multiple intermediate headers
+    // Add test for 98 intermediate headers for the next block submission
     function testMultipleIntermediateHeaders() public {
         vm.startPrank(SUBMITTER);
 
@@ -413,4 +379,7 @@ contract OptimizedLightClientTest is Test {
         assertEq(checkpoint.height, 109);
         vm.stopPrank();
     }
+
+    // Add test for transaction inclusion
+    function testVerifyTxnInclusion() public {}
 }

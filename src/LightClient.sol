@@ -50,7 +50,6 @@ contract LightClient is AccessControl {
     );
 
     constructor(address blockSubmitter) {
-        // TODO: Add functions who can update / delete / add the roles (this is for illustration purposes)
         _grantRole(BLOCK_SUBMIT_ROLE, blockSubmitter);
         _initialiseGenesisBlock();
     }
@@ -254,10 +253,8 @@ contract LightClient is AccessControl {
         view
         returns (bool)
     {
-        bytes32 naturalBytesTxId = BitcoinUtils.reverseBytes32(txId);
-        bytes32 naturalBytesMerkleRoot = BitcoinUtils.reverseBytes32(merkleRoot);
         // bytes32[] memory proofsInNaturalByteOrder = BitcoinUtils.reverseBytes32Array(proof);
-        return BitcoinUtils.verifyTxInclusion(naturalBytesTxId, naturalBytesMerkleRoot, proof, index);
+        return BitcoinUtils.verifyTxInclusion(txId, merkleRoot, proof, index);
     }
 
     /**
@@ -267,16 +264,15 @@ contract LightClient is AccessControl {
      * @param txIndex Index of the transaction in the block (0-based)
      * @param transactions Array of transaction hashes in tree order in reverse byte order
      * @return proof Array of proof hashes in natural byte order
-     * @return index Position of the transaction in the block
+     * @return directions Array of boolean values indicating left (false) or right (true) placements
      */
-    function generateMerkleProof(uint256 txIndex, bytes32[] calldata transactions)
+    function generateMerkleProof(bytes32[] calldata transactions, uint256 txIndex)
         external
         view
-        returns (bytes32[] memory proof, uint256 index)
+        returns (bytes32[] memory proof, bool[] memory directions)
     {
         require(txIndex < transactions.length, INVALID_TRANSACTION_INDEX());
-        bytes32[] memory txnsInNaturalByteOrder = BitcoinUtils.reverseBytes32Array(transactions);
-        return BitcoinUtils.generateMerkleProof(txIndex, txnsInNaturalByteOrder);
+        return BitcoinUtils.generateMerkleProof(transactions, txIndex);
     }
 
     /**
@@ -286,38 +282,5 @@ contract LightClient is AccessControl {
      */
     function getReversedBytes32(bytes32 bytes32Value) external pure returns (bytes32) {
         return BitcoinUtils.reverseBytes32(bytes32Value);
-    }
-
-    /**
-     * @dev Verifies a chain of Bitcoin block headers
-     * @param rawHeaders Raw block headers (must be 80 bytes each)
-     * @param targetBlockHash Expected hash of the final block
-     * @return bool True if the chain is valid
-     */
-    function verifyBlockContinuity(bytes[] calldata rawHeaders, bytes32 targetBlockHash) public view returns (bool) {
-        require(rawHeaders.length > 0, "Must provide at least one header");
-
-        bytes32 currentHash = latestBlockHash;
-
-        for (uint256 i = 0; i < rawHeaders.length; i++) {
-            require(rawHeaders[i].length == 80, "Invalid header length");
-
-            // Parse the header
-            BitcoinUtils.BlockHeader memory header = BitcoinUtils.parseBlockHeader(rawHeaders[i]);
-
-            // Verify previous block hash matches
-            require(header.prevBlock == currentHash, "Invalid hash chain");
-
-            // Calculate this block's hash
-            bytes32 blockHash = getBlockHash(rawHeaders[i]);
-
-            // Verify proof of work
-            // require(BitcoinUtils.verifyProofOfWork(blockHash, header.difficultyBits), "Invalid proof of work");
-
-            currentHash = blockHash;
-        }
-
-        // Verify we reached our target block
-        return currentHash == targetBlockHash;
     }
 }

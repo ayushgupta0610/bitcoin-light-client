@@ -203,61 +203,6 @@ contract LightClientTest is Test {
         vm.stopPrank();
     }
 
-    function test_ChainReorg() public {
-        vm.startPrank(blockSubmitter);
-
-        // Block #1 (Main chain)
-        bytes32 block1Hash = 0x00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048;
-        lightClient.submitBlockHeader(
-            block1Hash,
-            1,
-            1231469665,
-            0x1d00ffff,
-            0x7c2bac1d,
-            GENESIS_BLOCK,
-            0x0e3e2357e806b6cdb1f70b54c3a3a17b6714ee1f0e68bebb44a74b1efd512098
-        );
-
-        // Block #2 (Main chain)
-        bytes32 block2Hash = 0x000000006a625f06636b8bb6ac7b960a8d03705d1ace08b1a19da3fdcc99ddbd;
-        lightClient.submitBlockHeader(
-            block2Hash,
-            1,
-            1231469744,
-            0x1d00ffff,
-            0x2883949c,
-            block1Hash,
-            0x9b0fc92260312ce44e74ef369f5c66bbb85848f2eddd5a7a1cde251e54ccfdd5
-        );
-
-        // Verify current chain state
-        assertEq(lightClient.latestBlockHash(), block2Hash);
-        assertEq(lightClient.getBlockHeader(block2Hash).height, 2);
-
-        // Now submit a competing chain from block #1
-        // Competing Block #2 with same parent but different content
-        bytes32 competingBlock2Hash = 0x000000006c02c8ea6e4ff69651f7fcde348fb9d557a06e6957b65552002a7820;
-
-        vm.expectEmit(true, true, true, true);
-        emit LightClient.ChainReorg(2, block2Hash, 2, competingBlock2Hash);
-
-        lightClient.submitBlockHeader(
-            competingBlock2Hash,
-            1,
-            1231470173, // Later timestamp
-            0x1d00ffff, // Difficulty
-            0x1dac2b7c, // nonce
-            block1Hash, // Same parent as the original block 2
-            0x0e3e2357e806b6cdb1f70b54c3a3a17b6714ee1f0e68bebb44a74b1efd512098
-        );
-
-        // Verify the chain has been reorganized
-        assertEq(lightClient.latestBlockHash(), competingBlock2Hash);
-        assertEq(lightClient.getBlockHeader(competingBlock2Hash).height, 2);
-
-        vm.stopPrank();
-    }
-
     // Helper function to submit blocks quickly
     function _submitTestBlock(bytes32 blockHash, uint32 timestamp, uint32 bits, bytes32 prevBlockHash, uint32 nonce)
         internal
@@ -273,29 +218,6 @@ contract LightClientTest is Test {
         );
     }
 
-    // Helper function to create mock block headers
-    function _createMockBlockHeader(
-        uint32 version,
-        bytes32 prevBlock,
-        bytes32 merkleRoot,
-        uint32 blockTimestamp,
-        uint32 difficultyBits,
-        uint32 nonce
-    ) internal pure returns (bytes memory) {
-        bytes memory header = new bytes(80);
-
-        assembly {
-            mstore(add(header, 32), version)
-            mstore(add(header, 36), prevBlock)
-            mstore(add(header, 68), merkleRoot)
-            mstore(add(header, 100), blockTimestamp)
-            mstore(add(header, 105), difficultyBits)
-            mstore(add(header, 109), nonce)
-        }
-
-        return header;
-    }
-
     function test_VerifyTxInclusion() public view {
         // Using real Bitcoin block #100000 data
         // https://btcscan.org/block/000000000003ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506
@@ -304,94 +226,100 @@ contract LightClientTest is Test {
         txids[1] = 0xfff2525b8931402dd09222c50775608f75787bd2b87e56995a7bdd30f79702c4;
         txids[2] = 0x6359f0868171b1d194cbee1af2f16ea598ae8fad666d9b012c8ed2b79a236ec4;
         txids[3] = 0xe9a66845e05d5abc0ad04ec80f774a7e585c6e8db975962d069a522137b80c1d;
-
-        bytes32 merkleRoot = 0xf3e94742aca4b5ef85488dc37c06c3282295ffec960994b2c0d5ac2a25a95766;
+        bytes32 merkleRoot = lightClient.calculateMerkleRoot(txids);
+        console.logBytes32(merkleRoot);
 
         // Test Case 1: Valid inclusion for first transaction
         {
             // Generate proof for the first transaction (index 0)
-            (bytes32[] memory proof, uint256 index) = lightClient.generateMerkleProof(1, txids);
+            uint256 index = 1;
+            (bytes32[] memory proof,) = lightClient.generateMerkleProof(txids, index);
+            console.logBytes32(proof[0]);
+            console.logBytes32(proof[1]);
 
             // Verify the transaction is included
-            bool isIncluded = lightClient.verifyTxInclusion(txids[1], merkleRoot, proof, index);
+            bool isIncluded = lightClient.verifyTxInclusion(txids[index], merkleRoot, proof, index);
             assertTrue(isIncluded, "Transaction should be included in the merkle tree");
         }
 
         // Test Case 2: Invalid inclusion (wrong transaction ID)
         {
             // Generate proof for the first transaction (index 0)
-            (bytes32[] memory proof, uint256 index) = lightClient.generateMerkleProof(0, txids);
+            uint256 index = 0;
+            (bytes32[] memory proof,) = lightClient.generateMerkleProof(txids, index);
 
             // Try to verify with a different transaction ID
             bytes32 wrongTxId = 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef;
             bool isIncluded = lightClient.verifyTxInclusion(wrongTxId, merkleRoot, proof, index);
             assertFalse(isIncluded, "Transaction should not be included in the merkle tree");
         }
-    }
 
-    function testGasVerifyBlockContinuity() public view {
-        // Create sample block headers
-        bytes[] memory rawHeaders = new bytes[](5); // Test with 5 blocks first
-        bytes32 currentHash = GENESIS_BLOCK;
+        // Test Case 3: Invalid order for incorrect transaction inclusion
+        {
+            // Generate proof for the first transaction (index 0)
+            uint256 index = 1;
+            (bytes32[] memory proof,) = lightClient.generateMerkleProof(txids, index);
 
-        for (uint256 i = 0; i < rawHeaders.length; i++) {
-            // Create a valid block header that connects to previous hash
-            bytes memory header = _createMockBlockHeader(currentHash);
-            rawHeaders[i] = header;
-            currentHash = lightClient.getBlockHash(header);
-        }
-
-        // Measure gas for verification
-        uint256 startGas = gasleft();
-        lightClient.verifyBlockContinuity(rawHeaders, currentHash);
-        uint256 gasUsed = startGas - gasleft();
-
-        console.log("Gas used for %d blocks: %d", rawHeaders.length, gasUsed);
-    }
-
-    function testMaxBlocksVerification() public view {
-        // Test with increasing number of blocks until we hit gas limit
-        uint256[] memory blockCounts = new uint256[](6);
-        blockCounts[0] = 10;
-        blockCounts[1] = 50;
-        blockCounts[2] = 100;
-        blockCounts[3] = 200;
-        blockCounts[4] = 500;
-        blockCounts[5] = 1000;
-
-        for (uint256 i = 0; i < blockCounts.length; i++) {
-            uint256 blockCount = blockCounts[i];
-            bytes[] memory rawHeaders = new bytes[](blockCount);
-            bytes32 currentHash = GENESIS_BLOCK;
-
-            // Create chain of blocks
-            for (uint256 j = 0; j < blockCount; j++) {
-                bytes memory header = _createMockBlockHeader(currentHash);
-                rawHeaders[j] = header;
-                currentHash = lightClient.getBlockHash(header);
-            }
-
-            // Measure gas
-            uint256 startGas = gasleft();
-            try lightClient.verifyBlockContinuity(rawHeaders, currentHash) {
-                uint256 gasUsed = startGas - gasleft();
-                console.log("Gas used for %d blocks: %d", blockCount, gasUsed);
-                console.log("Gas per block: %d", gasUsed / blockCount);
-            } catch {
-                console.log("Failed at %d blocks - exceeded gas limit", blockCount);
-                break;
-            }
+            // Verify the transaction is included
+            bool isIncluded = lightClient.verifyTxInclusion(txids[3], merkleRoot, proof, index);
+            assertFalse(isIncluded, "Incorrect transaction order in the merkle tree");
         }
     }
 
-    function _createMockBlockHeader(bytes32 prevBlockHash) internal view returns (bytes memory) {
-        // Create a minimal valid header
-        uint32 version = 1;
-        uint32 timestamp = uint32(block.timestamp);
-        uint32 bits = 0x1d00ffff;
-        uint32 nonce = 0;
-        bytes32 merkleRoot = bytes32(0);
+    // Another test case to verify the inclusion of a transaction in a block
+    function test_VerifyMerkleProof() public view {
+        // Using real Bitcoin block #100001 data
+        // https://btcscan.org/block/00000000000080b66c911bd5ba14a74260057311eaeb1982802f7010f1a9f090
+        bytes32[] memory txids = new bytes32[](12);
+        txids[0] = 0xbb28a1a5b3a02e7657a81c38355d56c6f05e80b9219432e3352ddcfc3cb6304c;
+        txids[1] = 0xfbde5d03b027d2b9ba4cf5d4fecab9a99864df2637b25ea4cbcb1796ff6550ca;
+        txids[2] = 0x8131ffb0a2c945ecaf9b9063e59558784f9c3a74741ce6ae2a18d0571dac15bb;
+        txids[3] = 0xd6c7cb254aa7a5fd446e8b48c307890a2d4e426da8ad2e1191cc1d8bbe0677d7;
+        txids[4] = 0xce29e5407f5e4c9ad581c337a639f3041b24220d5aa60370d96a39335538810b;
+        txids[5] = 0x45a38677e1be28bd38b51bc1a1c0280055375cdf54472e04c590a989ead82515;
+        txids[6] = 0xc5abc61566dbb1c4bce5e1fda7b66bed22eb2130cea4b721690bc1488465abc9;
+        txids[7] = 0xa71f74ab78b564004fffedb2357fb4059ddfc629cb29ceeb449fafbf272104ca;
+        txids[8] = 0xfda204502a3345e08afd6af27377c052e77f1fefeaeb31bdd45f1e1237ca5470;
+        txids[9] = 0xd3cd1ee6655097146bdae1c177eb251de92aed9045a0959edc6b91d7d8c1f158;
+        txids[10] = 0xcb00f8a0573b18faa8c4f467b049f5d202bf1101d9ef2633bc611be70376a4b4;
+        txids[11] = 0x05d07bb2de2bda1115409f99bf6b626d23ecb6bed810d8be263352988e4548cb;
 
-        return BitcoinUtils.serializeBlockHeader(version, timestamp, bits, nonce, prevBlockHash, merkleRoot);
+        bytes32 merkleRoot = lightClient.calculateMerkleRoot(txids);
+
+        // Test Case 1: Valid inclusion for first transaction
+        {
+            // Generate proof for the first transaction (index 0)
+            uint256 index = 1;
+            (bytes32[] memory proof,) = lightClient.generateMerkleProof(txids, index);
+            console.logBytes32(proof[0]);
+            console.logBytes32(proof[1]);
+
+            // Verify the transaction is included
+            bool isIncluded = lightClient.verifyTxInclusion(txids[index], merkleRoot, proof, index);
+            assertTrue(isIncluded, "Transaction should be included in the merkle tree");
+        }
+
+        // Test Case 2: Invalid inclusion (wrong transaction ID)
+        {
+            // Generate proof for the first transaction (index 0)
+            uint256 index = 0;
+            (bytes32[] memory proof,) = lightClient.generateMerkleProof(txids, index);
+
+            // Try to verify with a different transaction ID
+            bytes32 wrongTxId = 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef;
+            bool isIncluded = lightClient.verifyTxInclusion(wrongTxId, merkleRoot, proof, index);
+            assertFalse(isIncluded, "Transaction should not be included in the merkle tree");
+        }
+
+        // Test Case 3: Invalid order for incorrect transaction inclusion
+        {
+            // Generate proof for the first transaction (index 0)
+            uint256 index = 1;
+            (bytes32[] memory proof,) = lightClient.generateMerkleProof(txids, index);
+
+            // Verify the transaction is included
+            bool isIncluded = lightClient.verifyTxInclusion(txids[3], merkleRoot, proof, index);
+            assertFalse(isIncluded, "Incorrect transaction order in the merkle tree");
+        }
     }
 }

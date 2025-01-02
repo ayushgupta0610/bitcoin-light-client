@@ -11,6 +11,7 @@ contract OptimizedLightClient is AccessControl {
     error INVALID_HEADER_CHAIN();
     error CHAIN_NOT_CONNECTED();
     error HEADERS_REQUIRED();
+    error INVALID_TRANSACTION_INDEX();
 
     bytes32 private constant BLOCK_SUBMIT_ROLE = keccak256("BLOCK_SUBMIT_ROLE");
     uint8 private constant HEADER_LENGTH = 80;
@@ -154,5 +155,40 @@ contract OptimizedLightClient is AccessControl {
      */
     function getLatestCheckpoint() external view returns (BitcoinUtils.BlockHeader memory) {
         return headers[latestCheckpointHeaderHash];
+    }
+
+    /**
+     * @notice Generate merkle proof for a transaction using binary index path
+     * @dev Index is provided as uint but represents binary path in the tree
+     *      The maximum value of the index is checked against array length
+     * @param transactions Array of transaction hashes in reverse byte in tree order
+     * @param index Binary path index to the target transaction
+     * @return proof Array of proof hashes inn natural byte order
+     * @return directions Array of boolean values indicating left (false) or right (true) placements
+     */
+    function generateMerkleProof(bytes32[] memory transactions, uint256 index)
+        public
+        view
+        returns (bytes32[] memory proof, bool[] memory directions)
+    {
+        require(index < transactions.length, INVALID_TRANSACTION_INDEX());
+        return BitcoinUtils.generateMerkleProof(transactions, index);
+    }
+
+    /**
+     * @notice Verify if a transaction is included in a block using a Merkle proof
+     * @dev All inputs should be in Bitcoin's display format (reversed byte order)
+     * @param txId Transaction ID to verify (in Bitcoin's reversed byte order)
+     * @param merkleRoot Expected Merkle root (in Bitcoin's reversed byte order)
+     * @param proof Array of proof hashes (in Bitcoin's reversed byte order)
+     * @param index Index of the transaction in the block (0-based)
+     * @return bool True if the proof is valid
+     */
+    function verifyTxInclusion(bytes32 txId, bytes32 merkleRoot, bytes32[] calldata proof, uint256 index)
+        external
+        view
+        returns (bool)
+    {
+        return BitcoinUtils.verifyTxInclusion(txId, merkleRoot, proof, index);
     }
 }

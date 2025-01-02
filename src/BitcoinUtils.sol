@@ -6,6 +6,9 @@ library BitcoinUtils {
     error EXPONENT_TOO_LARGE();
     error INVALID_LENGTH();
     error INVALID_HEX_CHARACTER();
+    error EMPTY_TXN_LIST();
+    error INDEX_OUT_OF_BOUNDS();
+    error LENGTHS_MISMATCH();
 
     struct BlockHeader {
         uint32 version; // 4 bytes
@@ -159,7 +162,7 @@ library BitcoinUtils {
     /// @param b bytes32 value
     /// @return bytes32 sha256 double hash
     function hashPair(bytes32 a, bytes32 b) internal view returns (bytes32) {
-        return BitcoinUtils.sha256DoubleHash(abi.encodePacked(a, b));
+        return sha256DoubleHash(abi.encodePacked(a, b));
     }
 
     /// @notice Serializes a BlockHeader struct into raw Bitcoin block header bytes
@@ -223,7 +226,7 @@ library BitcoinUtils {
     /// @notice Expand compressed difficulty bits to full target
     /// @param header BlockHeader struct
     /// @return bytes32 Block hash
-    function getBlockHashFromStruct(BitcoinUtils.BlockHeader memory header) internal view returns (bytes32) {
+    function getBlockHashFromStruct(BlockHeader memory header) internal view returns (bytes32) {
         // Serialise
         bytes memory serialisedBlockHeader = serializeBlockHeader(
             header.version, header.timestamp, header.difficultyBits, header.nonce, header.prevBlock, header.merkleRoot
@@ -264,20 +267,23 @@ library BitcoinUtils {
         return hashNum < target;
     }
 
-    /// @notice Verify if a transaction is included in a block using a Merkle proof
-    /// @dev All inputs should be in Bitcoin's display format (natural byte order)
-    /// @param txId Transaction ID to verify in natural byte order
-    /// @param merkleRoot Expected Merkle root in natural byte order
-    /// @param proof Array of proof hashes in natural byte order
-    /// @param index Index of the transaction in the block (0-based)
-    /// @return bool True if the proof is valid
-    function verifyTxInclusion(bytes32 txId, bytes32 merkleRoot, bytes32[] memory proof, uint256 index)
+    /**
+     * @notice Verify if a transaction is included in a block using a Merkle proof
+     * @dev All inputs should be in Bitcoin's display format (reversed byte order)
+     * @param txId Transaction ID to verify (in Bitcoin's reversed byte order)
+     * @param merkleRoot Expected Merkle root (in Bitcoin's reversed byte order)
+     * @param proof Array of proof hashes (in natural byte order for now)
+     * @param index Index of the transaction in the block (0-based)
+     * @return bool True if the proof is valid
+     */
+    function verifyTxInclusion(bytes32 txId, bytes32 merkleRoot, bytes32[] calldata proof, uint256 index)
         internal
         view
         returns (bool)
     {
         // Keep current hash in Bitcoin's internal byte order (not reversed)
-        bytes32 currentHash = txId;
+        bytes32 currentHash = reverseBytes32(txId); // Reverse the expected transaction ID to natural byte order
+        merkleRoot = reverseBytes32(merkleRoot); // Reverse the expected merkle root to natural byte order
 
         // For each level of the proof
         for (uint256 i = 0; i < proof.length; i++) {
@@ -301,60 +307,82 @@ library BitcoinUtils {
         return currentHash == merkleRoot;
     }
 
-    /// @notice Generate merkle proof for a transaction in natural byte order
-    /// @dev Index is provided as uint but represents binary path in the tree
-    ///      The maximum value of the index is checked against array length
-    /// @param txIndex Index of the transaction in the block (0-based)
-    /// @param txHashes Array of transaction hashes in tree order in natural byte order
-    /// @return proof Array of proof hashes in natural byte order
-    /// @return index Position of the transaction in the block
-    function generateMerkleProof(uint256 txIndex, bytes32[] memory txHashes)
+    /**
+     * @notice Generate merkle proof for a transaction using binary index path
+     * @dev Index is provided as uint but represents binary path in the tree
+     *      The maximum value of the index is checked against array length
+     * @param transactions Array of transaction hashes in tree order in reverse byte order
+     * @param index Binary path index to the target transaction
+     * @return proof Array of proof hashes
+     * @return directions Array of boolean values indicating left (false) or right (true) placements
+     */
+    function generateMerkleProof(bytes32[] memory transactions, uint256 index)
         internal
         view
-        returns (bytes32[] memory proof, uint256 index)
+        returns (bytes32[] memory proof, bool[] memory directions)
     {
-        uint256 numLeaves = txHashes.length;
-        uint256 proofLength = calculateProofLength(numLeaves);
-        proof = new bytes32[](proofLength);
+        // Check if transactions array is empty
+        require(transactions.length > 0, EMPTY_TXN_LIST());
 
-        // Start with the leaf level
-        bytes32[] memory currentLevel = txHashes;
-        index = txIndex; // Store original index for return
-        uint256 currentIndex = txIndex;
-        uint256 proofIndex = 0;
+        // Calculate maximum allowed index (number of transactions - 1)
+        uint256 maxIndex = transactions.length - 1;
+        require(index <= maxIndex, INDEX_OUT_OF_BOUNDS());
 
-        while (currentLevel.length > 1) {
-            bytes32[] memory nextLevel = new bytes32[]((currentLevel.length + 1) / 2);
-
-            for (uint256 i = 0; i < currentLevel.length; i += 2) {
-                if (i == currentLevel.length - 1) {
-                    // Handle odd number of elements
-                    nextLevel[i / 2] = currentLevel[i];
-                    continue;
-                }
-
-                // If this is our path, store the sibling in the proof
-                if (i == currentIndex || i + 1 == currentIndex) {
-                    proof[proofIndex++] = currentLevel[i + (currentIndex % 2 == 0 ? 1 : 0)];
-                }
-
-                // Calculate parent hash
-                nextLevel[i / 2] = hashPair(currentLevel[i], currentLevel[i + 1]);
-            }
-
-            // Move to next level
-            currentLevel = nextLevel;
-            currentIndex /= 2;
+        // Calculate the number of levels in the tree
+        uint256 levels = 0;
+        uint256 levelSize = transactions.length;
+        while (levelSize > 1) {
+            levelSize = (levelSize + 1) >> 1; // Divide by 2 rounding up
+            levels++;
         }
 
-        return (proof, index);
-    }
+        // Initialize proof arrays
+        proof = new bytes32[](levels);
+        directions = new bool[](levels);
 
-    ///  @notice Calculate the length of the Merkle proof based on number of leaves
-    ///  @param numLeaves Number of leaf nodes
-    ///  @return uint256 Length of the proof array
-    function calculateProofLength(uint256 numLeaves) internal pure returns (uint256) {
-        if (numLeaves <= 1) return 0;
-        return 1 + calculateProofLength((numLeaves + 1) / 2);
+        // Current level's nodes
+        transactions = reverseBytes32Array(transactions);
+        bytes32[] memory currentLevel = new bytes32[](transactions.length);
+        for (uint256 i = 0; i < transactions.length; i++) {
+            currentLevel[i] = transactions[i];
+        }
+
+        // Current position being tracked
+        uint256 currentIndex = index;
+
+        // Generate proof by moving up the tree
+        for (uint256 level = 0; level < levels; level++) {
+            uint256 levelLength = currentLevel.length;
+            uint256 nextLevelLength = (levelLength + 1) >> 1;
+            bytes32[] memory nextLevel = new bytes32[](nextLevelLength);
+
+            // For each pair in current level
+            for (uint256 i = 0; i < levelLength; i += 2) {
+                uint256 pairIndex = i >> 1;
+                bytes32 left = currentLevel[i];
+                bytes32 right = (i + 1 < levelLength) ? currentLevel[i + 1] : left;
+
+                // If this pair contains our target index
+                if (i <= currentIndex && currentIndex < i + 2) {
+                    // Record the sibling as proof
+                    if (currentIndex % 2 == 0) {
+                        proof[level] = right;
+                        directions[level] = true; // Right sibling
+                    } else {
+                        proof[level] = left;
+                        directions[level] = false; // Left sibling
+                    }
+                }
+
+                // Hash the pair for next level
+                nextLevel[pairIndex] = hashPair(left, right);
+            }
+
+            // Update for next level
+            currentLevel = nextLevel;
+            currentIndex = currentIndex >> 1;
+        }
+
+        return (proof, directions);
     }
 }
